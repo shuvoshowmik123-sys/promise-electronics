@@ -11,6 +11,7 @@ import { useState } from "react";
 import { Smartphone, Download, ExternalLink, ShieldCheck, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { openStaffApkDownload, RELEASES_PAGE } from "@/lib/staff-app-download";
+import { toast } from "sonner";
 
 export function StaffAppDownloadCard() {
   const [finding, setFinding] = useState(false);
@@ -18,7 +19,18 @@ export function StaffAppDownloadCard() {
   const handleDownload = async () => {
     setFinding(true);
     try {
-      await openStaffApkDownload();
+      // Android downloads and then says nothing, so the counter reaching the
+      // full size reads as a stall. Name the next step before it happens.
+      toast.info("Downloading the app…", {
+        description: "When it finishes, open the file from your notifications to install it.",
+        duration: 10000,
+      });
+      const where = await openStaffApkDownload();
+      if (where === "releases") {
+        toast.message("Opening the releases page", {
+          description: "Tap the .apk file there to download it.",
+        });
+      }
     } finally {
       setFinding(false);
     }
@@ -69,7 +81,10 @@ export function StaffAppDownloadCard() {
           */}
         <ol className="space-y-1.5 text-xs text-slate-600">
           <li><span className="font-bold text-slate-900">1.</span> Open this page on the phone and tap Download.</li>
-          <li><span className="font-bold text-slate-900">2.</span> Open the downloaded file.</li>
+          <li>
+            <span className="font-bold text-slate-900">2.</span> When the download finishes, open it from your
+            notifications or the Downloads folder. Android will not offer to install it on its own.
+          </li>
           <li>
             <span className="font-bold text-slate-900">3.</span> Android will warn that it is not from the Play
             Store. Allow it — that warning is normal for a company app.

@@ -4,6 +4,7 @@ import { Capacitor } from "@capacitor/core";
 import { Button } from "@/components/ui/button";
 import { usePwaInstallPrompt } from "@/hooks/usePwaInstallPrompt";
 import { openStaffApkDownload } from "@/lib/staff-app-download";
+import { toast } from "sonner";
 import { useAdminAuth } from "@/contexts/AdminAuthContext";
 
 /** Android in a browser — not the installed app, and not an iPhone. */
@@ -72,11 +73,28 @@ export function AdminPwaInstallPrompt() {
 
   const handleInstall = async () => {
     if (offerApk) {
-      // The asset is looked up rather than assumed — see staff-app-download.ts;
-      // a fixed filename broke on the first release. Android then asks its own
-      // install question, which is where "unknown sources" is granted once by
-      // the person holding the phone.
-      await openStaffApkDownload();
+      /*
+       * Say what happens next, because nothing else will.
+       *
+       * Android downloads the file and then goes quiet — no install prompt
+       * appears on its own. The first person through this watched the counter
+       * reach the full size and reported the download as stuck, when it had in
+       * fact finished and was simply sitting in Downloads waiting to be opened.
+       *
+       * The toast outlives the banner on purpose: dismiss() removes the thing
+       * that was just tapped, so without it the screen gives no sign anything
+       * happened at all.
+       */
+      toast.info("Downloading the app…", {
+        description: "When it finishes, open the file from your notifications to install it.",
+        duration: 10000,
+      });
+      const where = await openStaffApkDownload();
+      if (where === "releases") {
+        toast.message("Opening the releases page", {
+          description: "Tap the .apk file there to download it.",
+        });
+      }
       dismiss();
       return;
     }
@@ -99,7 +117,16 @@ export function AdminPwaInstallPrompt() {
      * time is a losing game; the top is the only part of a phone screen nothing
      * else claims.
      */
-    <div className="fixed inset-x-3 top-[calc(env(safe-area-inset-top)+0.75rem)] z-50 animate-in slide-in-from-top-4 duration-300 sm:inset-x-auto sm:top-auto sm:bottom-4 sm:right-4 sm:w-80">
+    /*
+     * z-[90]: above the shell, below anything modal.
+     *
+     * This sat at z-50 while the admin chrome runs to z-[60] and its sheets to
+     * z-[100], so the banner rendered underneath the floating header and looked
+     * like it had failed to appear at all. Above the chrome now, and still
+     * beneath the sheets — a dialog someone opened deliberately outranks a
+     * suggestion they did not ask for.
+     */
+    <div className="fixed inset-x-3 top-[calc(env(safe-area-inset-top)+0.75rem)] z-[90] animate-in slide-in-from-top-4 duration-300 sm:inset-x-auto sm:top-auto sm:bottom-4 sm:right-4 sm:w-80">
       <div className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
         <div className="flex items-center gap-3 p-3 bg-slate-900 text-white">
           <div className="w-9 h-9 bg-white/10 rounded-lg flex items-center justify-center flex-shrink-0">
