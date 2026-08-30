@@ -49,6 +49,47 @@ let cached: Resolved | null = null;
 /** Six hours. A release published today is offered the same day; nothing is asked hourly. */
 const CACHE_MS = 6 * 60 * 60 * 1000;
 
+/**
+ * Find the newest .apk without touching the API.
+ *
+ * Two plain HTML requests, neither of which is rate limited. /releases/latest
+ * answers with a redirect whose Location carries the newest tag, and
+ * /releases/expanded_assets/<tag> is the fragment GitHub's own page fetches to
+ * list the files — the asset links are in it as ordinary anchors.
+ *
+ * This is what lets the asset be called anything. Requiring a fixed filename
+ * put the whole feature at the mercy of whoever typed the name while publishing,
+ * and the first release was already called PromiseStaff-V1.0.0.apk, so the
+ * fixed-name link 404'd and the download said the app was unavailable.
+ */
+async function resolveViaHtml(): Promise<Resolved | null> {
+    try {
+        const latest = await fetch(`https://github.com/${REPO}/releases/latest`, {
+            redirect: "manual",
+            headers: { "User-Agent": "promise-staff-app" },
+        });
+        const location = latest.headers.get("location") ?? "";
+        const tag = location.split("/tag/")[1]?.trim();
+        if (!tag) return null;
+
+        const page = await fetch(`https://github.com/${REPO}/releases/expanded_assets/${tag}`, {
+            headers: { "User-Agent": "promise-staff-app" },
+        });
+        if (!page.ok) return null;
+        const html = await page.text();
+
+        const match = html.match(
+            new RegExp(`/${REPO}/releases/download/[^"']+\.apk`, "i"),
+        );
+        if (!match) return null;
+
+        const url = `https://github.com${match[0]}`;
+        return { url, name: decodeURIComponent(url.split("/").pop() || STABLE_ASSET), at: Date.now() };
+    } catch {
+        return null;
+    }
+}
+
 async function head(url: string): Promise<boolean> {
     try {
         const res = await fetch(url, { method: "HEAD", redirect: "follow" });
@@ -72,6 +113,13 @@ async function resolveApk(): Promise<Resolved | null> {
     const override = process.env.STAFF_APK_URL?.trim();
     if (override) {
         cached = { url: override, name: STABLE_ASSET, at: Date.now() };
+        return cached;
+    }
+
+    // Works whatever the asset is called, and costs no API quota.
+    const viaHtml = await resolveViaHtml();
+    if (viaHtml) {
+        cached = viaHtml;
         return cached;
     }
 
