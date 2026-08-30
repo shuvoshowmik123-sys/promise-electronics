@@ -20,7 +20,7 @@ const ROLE_COPY: Record<string, { body: string }> = {
 };
 
 export function AdminPwaInstallPrompt() {
-  const { canShow, isIOS, install, dismiss, hasNativePrompt } = usePwaInstallPrompt("admin");
+  const { canShow, isIOS, install, dismiss, dismissed, hasNativePrompt } = usePwaInstallPrompt("admin");
   const { user } = useAdminAuth();
 
   /**
@@ -67,6 +67,17 @@ export function AdminPwaInstallPrompt() {
    * available and the banner behaves exactly as it did.
    */
   const offerApk = isAndroidBrowser();
+
+  /**
+   * Dismissal applies to both paths.
+   *
+   * This check used to sit inside canShow, which the APK path skips — so the X
+   * and Later buttons set the flag and the banner ignored it, reappearing on
+   * every render with no way to close it. Asked separately now, before anything
+   * else, because a person who has said no has said no regardless of which
+   * thing was being offered.
+   */
+  if (dismissed) return null;
   if (!offerApk && (!canShow || (!isIOS && !hasNativePrompt))) return null;
 
   const copy = ROLE_COPY[user.role] || { body: "Open jobs, pickups, POS, and staff tools like a dedicated app." };

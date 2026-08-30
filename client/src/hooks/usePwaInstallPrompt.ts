@@ -37,6 +37,29 @@ export function usePwaInstallPrompt(portal: Portal) {
   const [canShow, setCanShow] = useState(false);
   const [isIOS, setIsIOS] = useState(false);
 
+  /**
+   * Whether this banner has been sent away, independently of whether it could
+   * otherwise be shown.
+   *
+   * canShow was carrying two meanings at once: "the browser has offered an
+   * install" and "the person has not refused". That worked while the only way
+   * to show the banner was the browser event, and broke the moment a second
+   * path existed — the Android APK offer does not wait for that event, so it
+   * bypassed canShow, and with it the dismissal. The X and Later did set the
+   * flag; the banner simply was not consulting it, and reappeared on every
+   * render. Nothing would close it.
+   *
+   * Read from storage on the first render rather than in an effect, so a return
+   * visit inside the seven days does not flash the banner before hiding it.
+   */
+  const [dismissed, setDismissed] = useState<boolean>(() => {
+    try {
+      return isRecentlyDismissed(portal);
+    } catch {
+      return false;
+    }
+  });
+
   useEffect(() => {
     if (isStandalone()) return;
     if (isRecentlyDismissed(portal)) return;
@@ -73,8 +96,15 @@ export function usePwaInstallPrompt(portal: Portal) {
 
   const dismiss = useCallback(() => {
     setCanShow(false);
-    localStorage.setItem(getDismissKey(portal), Date.now().toString());
+    setDismissed(true);
+    try {
+      localStorage.setItem(getDismissKey(portal), Date.now().toString());
+    } catch {
+      // Private mode or blocked storage: the banner still goes for this
+      // session, it simply returns on the next visit. Better than throwing out
+      // of a click handler and leaving it on screen.
+    }
   }, [portal]);
 
-  return { canShow, isIOS, install, dismiss, hasNativePrompt: !!deferredPrompt };
+  return { canShow, isIOS, install, dismiss, dismissed, hasNativePrompt: !!deferredPrompt };
 }
