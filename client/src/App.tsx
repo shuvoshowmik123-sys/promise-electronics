@@ -173,13 +173,22 @@ function App() {
       }
 
       // Configure Status Bar
+      /**
+       * A plain white bar with dark icons, not an overlay.
+       *
+       * Overlaying suits a full-bleed photo or a map. The admin panel is a
+       * white sheet with a header at the top, and with overlay on, that header
+       * slid underneath the clock and the strip rendered as whatever was behind
+       * it — which read as a black band across the top of a white app.
+       *
+       * So the status bar gets its own space and is painted the same white as
+       * the panel. Style.Light means dark icons FOR a light background, which
+       * is the opposite of how it sounds and easy to set backwards.
+       */
       const configureStatusBar = async () => {
         try {
-          // Make status bar transparent and overlay webview for immersive effect
-          await StatusBar.setOverlaysWebView({ overlay: true });
-
-          // Set style based on system theme or default to Light
-          // You might want to listen to theme changes if your app supports dynamic theming
+          await StatusBar.setOverlaysWebView({ overlay: false });
+          await StatusBar.setBackgroundColor({ color: "#ffffff" });
           await StatusBar.setStyle({ style: Style.Light });
         } catch (err) {
           console.warn("StatusBar config failed", err);

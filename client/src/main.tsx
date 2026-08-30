@@ -1,4 +1,5 @@
 import { createRoot } from "react-dom/client";
+import { Capacitor } from "@capacitor/core";
 import App from "./App";
 import "./index.css";
 import "./lib/i18n";
@@ -8,6 +9,25 @@ import { installStaleBuildRecovery } from "./lib/app-update-recovery";
 // is the very event the recovery reload fires, so clearing there let a
 // permanently broken chunk reload the page forever.
 installStaleBuildRecovery();
+
+/**
+ * The staff app opens on the admin panel, not the shop's front page.
+ *
+ * Both are in the same bundle, and a native launch starts at "/" — which is
+ * the public homepage a customer sees. Nobody installs the staff app to read
+ * the marketing site, and the first build shipped exactly that.
+ *
+ * Rewritten before React mounts so the router's first render is already the
+ * admin route: sending it afterwards would draw the homepage, then replace it,
+ * which is visible and looks like a fault. From "/admin" the existing guard
+ * decides — login when signed out, the role's own landing page when signed in.
+ *
+ * Only the entry path is touched. Every route inside the app still works, so a
+ * push notification that deep-links to a job opens that job.
+ */
+if (Capacitor.isNativePlatform() && (window.location.pathname === "/" || window.location.pathname === "")) {
+    window.history.replaceState(null, "", "/admin");
+}
 
 // ── API URL interceptor for frontend/backend separation ───────────────────────
 // When VITE_API_URL is set (Render backend, Vercel frontend), all relative
