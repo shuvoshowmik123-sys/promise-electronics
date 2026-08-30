@@ -60,7 +60,23 @@ declare module 'express-session' {
 // Admin authentication schemas
 export const adminLoginSchema = z.object({
     username: z.string().min(1, 'Username is required'),
-    password: z.string().min(6, 'Password must be at least 6 characters').max(13, 'Password is too long'),
+    /**
+     * 72 bytes, which is bcrypt's own limit.
+     *
+     * This capped at 13 and locked people out of their own accounts. The
+     * reset-link route enforces a minimum and no maximum, so a staff member
+     * following a link could set a twenty-character password, be told "Your
+     * password has been changed. You can sign in now", and then be refused at
+     * the login form — with a 400 raised by this schema before the password was
+     * ever compared. The credential was correct and unusable, and nothing on
+     * either screen connected the two.
+     *
+     * A maximum is still wanted: bcrypt silently ignores anything past 72
+     * bytes, so a longer secret is not the secret the user thinks it is. 72 is
+     * the honest limit and the one every other password field here already
+     * uses.
+     */
+    password: z.string().min(6, 'Password must be at least 6 characters').max(72, 'Password is too long'),
     rememberMe: z.boolean().optional(),
 });
 
@@ -68,7 +84,7 @@ export const adminCreateUserSchema = z.object({
     username: z.string().min(3, 'Username must be at least 3 characters'),
     name: z.string().min(2, 'Name is required'),
     email: z.string().email('Valid email is required'),
-    password: z.string().min(6, 'Password must be at least 6 characters').max(13, 'Password is too long'),
+    password: z.string().min(6, 'Password must be at least 6 characters').max(72, 'Password is too long'),
     role: z.enum(['Super Admin', 'Manager', 'Cashier', 'Technician', 'Driver', 'Corporate']),
     permissions: z.string().optional(),
     // Employment & Salary Optional Fields
@@ -88,7 +104,18 @@ export const adminUpdateUserSchema = z.object({
     username: z.string().min(3).optional(),
     name: z.string().min(2).optional(),
     email: z.string().email().optional(),
-    password: z.string().min(6).max(13).optional(),
+    /**
+     * 72 bytes, which is bcrypt's own limit and what every other password field
+     * here already uses.
+     *
+     * This said max(13). A staff member changing their password to anything
+     * longer — which is to say, anything a password manager would suggest — was
+     * refused with "String must contain at most 13 character(s)", and the panel
+     * showed only "Failed to update user". The reset-link route has no such cap,
+     * so a password set through a link could be one this route would refuse to
+     * set, which is how the two disagreed.
+     */
+    password: z.string().min(6).max(72).optional(),
     role: z.enum(['Super Admin', 'Manager', 'Cashier', 'Technician', 'Driver', 'Corporate']).optional(),
     status: z.enum(['Active', 'Inactive']).optional(),
     permissions: z.string().optional(),
