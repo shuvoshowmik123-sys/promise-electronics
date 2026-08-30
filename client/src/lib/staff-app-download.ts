@@ -53,6 +53,36 @@ export async function resolveStaffApkUrl(): Promise<string | null> {
  */
 export async function openStaffApkDownload(): Promise<"apk" | "releases"> {
     const url = await resolveStaffApkUrl();
-    window.location.href = url ?? RELEASES_PAGE;
+    const target = url ?? RELEASES_PAGE;
+
+    /**
+     * Hand the file to the browser rather than navigating this window to it.
+     *
+     * The admin panel is installed as a PWA, and a standalone PWA window has no
+     * download UI of its own — no address bar, no downloads tray, nothing to
+     * take delivery. Setting location.href there starts the transfer and then
+     * has nowhere to put it: the phone shows the bytes arriving, reaches the
+     * full size, and sits on "finishing" forever. It looks exactly like a stalled
+     * download and is really a window that cannot finish one.
+     *
+     * Opening in a new context gives it to the real browser, which does have a
+     * downloads tray and will offer to install the APK when it lands.
+     *
+     * The `download` attribute is deliberately not set: it is ignored
+     * cross-origin, and GitHub already sends Content-Disposition with the
+     * filename, so the browser names the file correctly on its own.
+     */
+    const a = document.createElement("a");
+    a.href = target;
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+
+    // Popup blockers can refuse a click that came out of an await. Falling back
+    // to navigating this window is worse than nothing only inside a PWA, and
+    // there the new context is what was blocked — so tell the caller instead of
+    // silently doing the thing that hangs.
     return url ? "apk" : "releases";
 }
