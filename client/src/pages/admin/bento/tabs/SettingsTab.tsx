@@ -40,6 +40,7 @@ import { canOpenServiceFeedbackWorkspace } from "@/lib/service-feedback-capabili
 const ServiceFeedbackSection = lazy(() => import("./settings/ServiceFeedbackSection"));
 const PoliciesSection = lazy(() => import("./settings/PoliciesSection"));
 const QaCleanupSection = lazy(() => import("./settings/QaCleanupSection"));
+import { StaffAppDownloadCard } from "@/components/admin/StaffAppDownloadCard";
 
 function BodyPortal({ children }: { children: React.ReactNode }) {
     if (typeof document === "undefined") return null;
@@ -913,6 +914,13 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                         right={null} onClick={() => setSelectedPanel("bulkimport")} />
                 </MobilePanel>
                 )}
+
+                {/* The staff app. Not gated on role — anyone signed in may put it
+                    on their own phone, and the app enforces the same permissions. */}
+                <MobileSectionTitle>Mobile app</MobileSectionTitle>
+                <div className="mx-4 mb-6">
+                    <StaffAppDownloadCard />
+                </div>
 
                 {/* Selective test-record removal. Separate from the Danger Zone
                     below: that wipes everything, this removes named records only. */}

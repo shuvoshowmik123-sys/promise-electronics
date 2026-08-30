@@ -1,8 +1,25 @@
 import { useEffect, useState } from "react";
-import { X, Download, Monitor } from "lucide-react";
+import { X, Download, Monitor, Smartphone } from "lucide-react";
+import { Capacitor } from "@capacitor/core";
 import { Button } from "@/components/ui/button";
 import { usePwaInstallPrompt } from "@/hooks/usePwaInstallPrompt";
 import { useAdminAuth } from "@/contexts/AdminAuthContext";
+
+/**
+ * The signed staff app, from the repository's latest release.
+ *
+ * "releases/latest/download" is resolved by GitHub at request time, so this
+ * link never has to be updated: publishing a new release with an asset of this
+ * name is enough, and every phone that follows the link gets the new build.
+ */
+const STAFF_APK_URL =
+  "https://github.com/shuvoshowmik123-sys/promise-electronics/releases/latest/download/PromiseStaff.apk";
+
+/** Android in a browser — not the installed app, and not an iPhone. */
+function isAndroidBrowser(): boolean {
+  if (Capacitor.isNativePlatform()) return false;
+  return /android/i.test(navigator.userAgent);
+}
 
 const ROLE_COPY: Record<string, { body: string }> = {
   Driver: { body: "Open pickup tasks, route plans, and delivery updates like a dedicated app." },
@@ -38,13 +55,39 @@ export function AdminPwaInstallPrompt() {
     return () => window.removeEventListener("admin:mobile-chrome", onChrome);
   }, []);
 
-  if (!canShow || !user) return null;
-  if (!isIOS && !hasNativePrompt) return null;
+  /**
+   * Inside the installed app there is nothing left to offer.
+   *
+   * Without this the staff app shows a banner inviting you to install the staff
+   * app, which is the sort of thing that makes people distrust the rest of it.
+   */
+  if (Capacitor.isNativePlatform()) return null;
+  if (!user) return null;
   if (surfaceOpen) return null;
+
+  /**
+   * On Android the real app wins over the web one.
+   *
+   * A PWA on Android cannot hold a push notification open when it is closed —
+   * the battery optimiser decides, and a job alert an hour late is not an
+   * alert. The signed APK does, so where both are possible we offer the APK and
+   * do not mention the other. Everywhere else the PWA is still the best thing
+   * available and the banner behaves exactly as it did.
+   */
+  const offerApk = isAndroidBrowser();
+  if (!offerApk && (!canShow || (!isIOS && !hasNativePrompt))) return null;
 
   const copy = ROLE_COPY[user.role] || { body: "Open jobs, pickups, POS, and staff tools like a dedicated app." };
 
   const handleInstall = async () => {
+    if (offerApk) {
+      // Straight to the file. Android then asks its own install question, which
+      // is the point at which "unknown sources" is granted, once, by the person
+      // holding the phone.
+      window.location.href = STAFF_APK_URL;
+      dismiss();
+      return;
+    }
     if (isIOS) {
       dismiss();
       return;
@@ -68,11 +111,15 @@ export function AdminPwaInstallPrompt() {
       <div className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
         <div className="flex items-center gap-3 p-3 bg-slate-900 text-white">
           <div className="w-9 h-9 bg-white/10 rounded-lg flex items-center justify-center flex-shrink-0">
-            <Monitor className="w-5 h-5" />
+            {offerApk ? <Smartphone className="w-5 h-5" /> : <Monitor className="w-5 h-5" />}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="font-semibold text-sm">Install Promise Admin</p>
-            <p className="text-xs text-slate-300 truncate">{copy.body}</p>
+            <p className="font-semibold text-sm">
+              {offerApk ? "Get the Promise Staff app" : "Install Promise Admin"}
+            </p>
+            <p className="text-xs text-slate-300 truncate">
+              {offerApk ? "Real notifications, even when the app is closed." : copy.body}
+            </p>
           </div>
           <button onClick={dismiss} className="p-1 hover:bg-white/10 rounded-full flex-shrink-0">
             <X className="w-4 h-4" />
@@ -84,7 +131,7 @@ export function AdminPwaInstallPrompt() {
           </Button>
           <Button size="sm" className="flex-1 bg-slate-900 hover:bg-slate-800 text-white" onClick={handleInstall}>
             <Download className="w-3.5 h-3.5 mr-1.5" />
-            Install
+            {offerApk ? "Download app" : "Install"}
           </Button>
         </div>
       </div>
