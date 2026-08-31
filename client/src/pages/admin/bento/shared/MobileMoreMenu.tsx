@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { Search, ChevronRight, LogOut, UserCog } from "lucide-react";
+import { Search, ChevronRight, LogOut, UserCog, Smartphone } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type NavItem = { label: string; id: string; icon: any; color?: string };
@@ -123,6 +123,22 @@ export function MobileMoreMenu({
                 >
                     <UserCog className="h-5 w-5" /> My Account
                 </button>
+
+                {/*
+                  * Getting the Android app.
+                  *
+                  * Here because this is where a phone can act on it. The install
+                  * banner is a nudge that depends on four things which differ from
+                  * phone to phone, and the sidebar carrying the same link is desktop
+                  * only — so on the device that can actually install the app there
+                  * was, until now, no permanent way to reach it.
+                  */}
+                <a
+                    href="/admin/get-app"
+                    className="w-full h-13 py-3.5 rounded-2xl border border-slate-900/10 bg-slate-900 text-white font-bold flex items-center justify-center gap-2 active:scale-[0.98] transition-transform"
+                >
+                    <Smartphone className="h-5 w-5" /> Get the Android app
+                </a>
 
                 {/* Logout */}
                 <button
