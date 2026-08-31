@@ -11,7 +11,8 @@ import {
     Banknote, UserCheck, UserCog, HardHat, Building2,
     FileText, HelpCircle, Settings, Bell, Search, User, Zap,
     PieChart, Users, LineChart, Menu, LogOut,
-    ShieldCheck, RotateCcw, FileWarning, Brain, WifiOff, Wrench, MapPinned, Clock, Scale, TrendingUp
+    ShieldCheck, RotateCcw, FileWarning, Brain, WifiOff, Wrench, MapPinned, Clock, Scale, TrendingUp,
+    Smartphone,
 } from "lucide-react";
 import { canViewDisputes } from "@/lib/disputes-capabilities";
 
@@ -1438,6 +1439,33 @@ function SidebarContent({ groups, activeTab, onSelectTab, isOnline, getTabTier }
                     </div>
                 </div>
             ))}
+
+            {/*
+              * A permanent way to get the staff app.
+              *
+              * The banner that offers it is at the mercy of four things that
+              * differ on every device: whether Chrome fires its install event,
+              * whether this person dismissed it, whether they are signed in yet,
+              * and whether the page is cached. It is a good nudge and a bad
+              * dependency — it was chased across half a dozen rounds precisely
+              * because it kept being right on one phone and absent on the next.
+              *
+              * This is always here. It works on a computer too, where the banner
+              * deliberately does not appear because an Android build cannot run
+              * there — but the manager standing at a computer is exactly who
+              * needs the link to send to staff.
+              */}
+            <div className="mt-4 border-t border-slate-200/60 pt-3">
+                <a
+                    href="/api/app/download"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900"
+                >
+                    <Smartphone size={16} className="shrink-0" />
+                    <span className="truncate text-[13px] font-semibold">Get the Android app</span>
+                </a>
+            </div>
         </>
     );
 }
