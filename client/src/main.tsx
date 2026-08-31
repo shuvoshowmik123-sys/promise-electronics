@@ -4,11 +4,16 @@ import App from "./App";
 import "./index.css";
 import "./lib/i18n";
 import { installStaleBuildRecovery } from "./lib/app-update-recovery";
+import { installNativePermissionBridges } from "./lib/native-permissions";
 
 // The recovery cooldown is time-based and must NOT be cleared on `load`: that
 // is the very event the recovery reload fires, so clearing there let a
 // permanently broken chunk reload the page forever.
 installStaleBuildRecovery();
+
+// Routes the browser APIs the panel already uses through the native permission
+// flow. Installs shims only — nothing is requested until a feature is used.
+installNativePermissionBridges();
 
 /**
  * The staff app opens on the admin panel, not the shop's front page.

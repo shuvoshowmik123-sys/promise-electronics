@@ -10,6 +10,7 @@
  */
 import { AlertCircle, Camera, ImageUp, ScanLine, X } from "lucide-react";
 import { useRef, useState, useEffect } from "react";
+import { ensureCameraPermission } from "@/lib/native-permissions";
 
 const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i;
 
@@ -49,6 +50,20 @@ export function QRScanButton({ onJobFound }: Props) {
         (async () => {
             try {
                 setScanError("");
+                /*
+                 * Ask Android before asking the browser.
+                 *
+                 * Inside the staff app getUserMedia is refused unless the app
+                 * already holds CAMERA, and the refusal arrives as a
+                 * NotAllowedError that reads as though the person declined —
+                 * when nobody was ever asked. On the web this returns true
+                 * immediately and the browser's own prompt does the work.
+                 */
+                const allowed = await ensureCameraPermission();
+                if (!allowed) {
+                    setScanError("Camera permission is needed to scan. Allow it in the phone's settings for this app.");
+                    return;
+                }
                 const stream = await navigator.mediaDevices.getUserMedia({
                     video: { facingMode: "environment" },
                 });

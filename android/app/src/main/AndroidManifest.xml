@@ -64,6 +64,20 @@
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
 
+    <!--
+      Location, for the GPS check-in on Shift and the pickup map.
+
+      The panel asks for these the browser way, through navigator.geolocation.
+      In a WebView that is refused unless the app itself holds the permission,
+      and the refusal arrives with no prompt — which is why the app appeared
+      never to ask for anything. Coarse is listed beside fine because Android 12
+      and later let the person grant only approximate location, and a refused
+      fine request should fall back rather than fail.
+    -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-feature android:name="android.hardware.location.gps" android:required="false" />
+
     <!-- Fingerprint unlock, offered by the biometric plugin. -->
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
 
