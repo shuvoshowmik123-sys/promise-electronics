@@ -43,7 +43,7 @@ const STABLE_ASSET = "PromiseStaff.apk";
 const STABLE_URL = `https://github.com/${REPO}/releases/latest/download/${STABLE_ASSET}`;
 const LATEST_API = `https://api.github.com/repos/${REPO}/releases/latest`;
 
-type Resolved = { url: string; name: string; at: number };
+type Resolved = { url: string; name: string; tag: string; at: number };
 let cached: Resolved | null = null;
 
 /**
@@ -95,7 +95,7 @@ async function resolveViaHtml(): Promise<Resolved | null> {
         if (!match) return null;
 
         const url = `https://github.com${match[0]}`;
-        return { url, name: decodeURIComponent(url.split("/").pop() || STABLE_ASSET), at: Date.now() };
+        return { url, name: decodeURIComponent(url.split("/").pop() || STABLE_ASSET), tag, at: Date.now() };
     } catch {
         return null;
     }
@@ -123,7 +123,7 @@ async function resolveApk(): Promise<Resolved | null> {
 
     const override = process.env.STAFF_APK_URL?.trim();
     if (override) {
-        cached = { url: override, name: STABLE_ASSET, at: Date.now() };
+        cached = { url: override, name: STABLE_ASSET, tag: "", at: Date.now() };
         return cached;
     }
 
@@ -135,7 +135,7 @@ async function resolveApk(): Promise<Resolved | null> {
     }
 
     if (await head(STABLE_URL)) {
-        cached = { url: STABLE_URL, name: STABLE_ASSET, at: Date.now() };
+        cached = { url: STABLE_URL, name: STABLE_ASSET, tag: "", at: Date.now() };
         return cached;
     }
 
@@ -145,13 +145,14 @@ async function resolveApk(): Promise<Resolved | null> {
         });
         if (res.ok) {
             const data = (await res.json()) as {
+                tag_name?: string;
                 assets?: Array<{ name?: string; browser_download_url?: string }>;
             };
             const apk = (data.assets ?? []).find(
                 (a) => typeof a.name === "string" && a.name.toLowerCase().endsWith(".apk"),
             );
             if (apk?.browser_download_url) {
-                cached = { url: apk.browser_download_url, name: apk.name ?? STABLE_ASSET, at: Date.now() };
+                cached = { url: apk.browser_download_url, name: apk.name ?? STABLE_ASSET, tag: (data as { tag_name?: string }).tag_name ?? "", at: Date.now() };
                 return cached;
             }
         }
@@ -171,7 +172,21 @@ router.get("/api/app/latest", async (_req: Request, res: Response) => {
             hint: `Publish a release with an asset named ${STABLE_ASSET}.`,
         });
     }
-    res.json({ filename: asset.name, downloadUrl: "/api/app/download" });
+    /**
+     * The tag is the version the app compares itself against.
+     *
+     * Taken from the release tag rather than read out of the APK: the tag is
+     * what a person publishing a release types deliberately, and reading the
+     * binary would mean downloading ten megabytes on the server to answer a
+     * question the tag already answers. The leading "v" is dropped so it can be
+     * compared with the versionName Android reports, which has none.
+     */
+    res.json({
+        version: asset.tag.replace(/^v/i, ""),
+        tag: asset.tag,
+        filename: asset.name,
+        downloadUrl: "/api/app/download",
+    });
 });
 
 /**

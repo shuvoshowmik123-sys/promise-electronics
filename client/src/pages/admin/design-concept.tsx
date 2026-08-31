@@ -37,6 +37,7 @@ import { ReminderBell } from "@/components/admin/ReminderBell";
 import { TeamChatPanel } from "@/components/admin/TeamChatPanel";
 import { AdminPwaInstallPrompt } from "@/components/admin/AdminPwaInstallPrompt";
 import { AdminPushRegistrar } from "@/components/admin/AdminPushRegistrar";
+import { AppUpdatePrompt } from "@/components/admin/AppUpdatePrompt";
 import { DatabaseSyncStatus } from "@/components/admin/DatabaseSyncStatus";
 import {
     adminQueryFromTabSearch,
@@ -1321,6 +1322,7 @@ export default function DesignConcept() {
                 <SyncConflictReview />
                 <TeamChatPanel />
                 <AdminPushRegistrar />
+                <AppUpdatePrompt />
                 <AdminPwaInstallPrompt />
             </div>
         </RollbackProvider>
