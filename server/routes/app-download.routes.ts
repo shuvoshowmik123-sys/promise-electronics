@@ -20,9 +20,16 @@
  * name that GitHub redirects for free, the answer is cached for six hours, and
  * a stale answer is always preferred to no answer.
  *
- * Mounted under /api because that is the only prefix the Vercel frontend
- * forwards to this server. A route outside it is answered by the SPA, which is
- * why /app/download returned the app's own "page not found" rather than a file.
+ * Mounted under a prefix the Vercel frontend forwards to this server. A route
+ * outside one is answered by the SPA, which is why /app/download returned the
+ * app's own "page not found" rather than a file.
+ *
+ * Two prefixes answer, and both must stay. /admin/api/app/... is the address to
+ * hand out: it says on its face that this is the staff build and not something
+ * a customer should be installing. /api/app/... is what the apps already in
+ * people's hands ask for, and an app cannot be updated to a new update URL
+ * without first being updated — so removing it would strand exactly the phones
+ * this route exists to reach.
  */
 
 import { Router, type Request, type Response } from "express";
@@ -30,6 +37,22 @@ import { Router, type Request, type Response } from "express";
 const router = Router();
 
 const REPO = "shuvoshowmik123-sys/promise-electronics";
+
+/**
+ * The address handed out, spelled in full.
+ *
+ * A relative path is wrong in the one place it matters most. Inside the staff
+ * app the page's origin is https://localhost, so "/admin/api/app/download"
+ * opened in the phone's browser resolves against localhost and fetches nothing
+ * — the update button would appear to do nothing at all. An absolute URL on the
+ * public domain is correct from the app, from a browser, and in a message sent
+ * to someone who is not holding either.
+ */
+const PUBLIC_ORIGIN = (process.env.PUBLIC_APP_ORIGIN || "https://promiseelectronics.com").replace(/\/$/, "");
+
+/** Where people are sent. Both prefixes serve it; this is the one advertised. */
+export const APP_DOWNLOAD_PATH = "/admin/api/app/download";
+export const APP_DOWNLOAD_URL = `${PUBLIC_ORIGIN}${APP_DOWNLOAD_PATH}`;
 
 /**
  * The asset name to publish releases under.
@@ -43,7 +66,7 @@ const STABLE_ASSET = "PromiseStaff.apk";
 const STABLE_URL = `https://github.com/${REPO}/releases/latest/download/${STABLE_ASSET}`;
 const LATEST_API = `https://api.github.com/repos/${REPO}/releases/latest`;
 
-type Resolved = { url: string; name: string; tag: string; at: number };
+type Resolved = { url: string; name: string; tag: string; at: number; size?: number | null };
 let cached: Resolved | null = null;
 
 /**
@@ -96,6 +119,17 @@ async function resolveViaHtml(): Promise<Resolved | null> {
 
         const url = `https://github.com${match[0]}`;
         return { url, name: decodeURIComponent(url.split("/").pop() || STABLE_ASSET), tag, at: Date.now() };
+    } catch {
+        return null;
+    }
+}
+
+/** The asset's size in bytes, or null if the release host will not say. */
+async function contentLength(url: string): Promise<number | null> {
+    try {
+        const res = await fetch(url, { method: "HEAD", redirect: "follow" });
+        const len = Number(res.headers.get("content-length"));
+        return Number.isFinite(len) && len > 0 ? len : null;
     } catch {
         return null;
     }
@@ -164,7 +198,7 @@ async function resolveApk(): Promise<Resolved | null> {
 }
 
 /** What is on offer, for the screen showing the button. */
-router.get("/api/app/latest", async (_req: Request, res: Response) => {
+router.get(["/api/app/latest", "/admin/api/app/latest"], async (_req: Request, res: Response) => {
     const asset = await resolveApk();
     if (!asset) {
         return res.status(503).json({
@@ -181,11 +215,25 @@ router.get("/api/app/latest", async (_req: Request, res: Response) => {
      * question the tag already answers. The leading "v" is dropped so it can be
      * compared with the versionName Android reports, which has none.
      */
+    /**
+     * The size is looked up once and kept with the cached answer.
+     *
+     * Worth one HEAD request: a download with no stated size is the one people
+     * abandon, and this one is ten megabytes over a phone connection. It is also
+     * how someone can tell a finished download from a stalled one, which is a
+     * distinction this app has already cost us a week over.
+     */
+    if (asset.size === undefined) {
+        asset.size = await contentLength(asset.url);
+    }
+
     res.json({
         version: asset.tag.replace(/^v/i, ""),
         tag: asset.tag,
         filename: asset.name,
-        downloadUrl: "/api/app/download",
+        /** Absolute — see PUBLIC_ORIGIN. A relative path breaks the app's own update button. */
+        downloadUrl: APP_DOWNLOAD_URL,
+        size: asset.size ?? null,
     });
 });
 
@@ -197,7 +245,7 @@ router.get("/api/app/latest", async (_req: Request, res: Response) => {
  * on to know when it is finished, and a filename it does not have to parse out
  * of a query string.
  */
-router.get("/api/app/download", async (_req: Request, res: Response) => {
+router.get(["/api/app/download", "/admin/api/app/download"], async (_req: Request, res: Response) => {
     const asset = await resolveApk();
     if (!asset) {
         return res.status(503).send("The app is not available for download just now.");

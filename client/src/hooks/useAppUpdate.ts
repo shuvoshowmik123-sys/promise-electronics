@@ -56,7 +56,7 @@ export function useAppUpdate() {
         (async () => {
             try {
                 const info = await CapacitorApp.getInfo();
-                const res = await fetch("/api/app/latest", { headers: { Accept: "application/json" } });
+                const res = await fetch("/admin/api/app/latest", { headers: { Accept: "application/json" } });
                 if (!res.ok) return;
                 const data = (await res.json()) as { version?: string; downloadUrl?: string };
                 if (cancelled || !data.version || !data.downloadUrl) return;
@@ -94,6 +94,13 @@ export function useAppUpdate() {
          * starts a transfer with nowhere to land — the bytes arrive, the counter
          * reaches the end, and it sits on "finishing" for ever. The browser has
          * somewhere to put it and offers to install it when it lands.
+         */
+        /**
+         * update.downloadUrl is absolute, and has to be.
+         *
+         * The app's own origin is https://localhost, so a relative path handed
+         * to the phone's browser resolves against localhost and fetches
+         * nothing — the update button would appear to do nothing at all.
          */
         const a = document.createElement("a");
         a.href = update.downloadUrl;

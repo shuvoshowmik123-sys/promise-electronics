@@ -4,6 +4,10 @@
     "outputDirectory": "dist/public",
     "rewrites": [
         {
+            "source": "/admin/api/:path*",
+            "destination": "https://promise-electronics-5r25.onrender.com/admin/api/:path*"
+        },
+        {
             "source": "/api/:path*",
             "destination": "https://promise-electronics-5r25.onrender.com/api/:path*"
         },

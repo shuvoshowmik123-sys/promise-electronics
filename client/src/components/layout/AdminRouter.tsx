@@ -17,6 +17,9 @@ const AdminResetPasswordPage = lazy(() => import("@/pages/admin/reset-password")
 // Staff Setup (public — no auth required)
 const StaffSetupPage = lazy(() => import("@/pages/admin/staff-setup"));
 
+// Where the Android app is handed out (public — see below)
+const GetAppPage = lazy(() => import("@/pages/admin/get-app"));
+
 // Standalone Print Views (Not part of the Bento Dashboard Shell)
 const CorporateBillPrint = lazy(() => import("@/pages/admin/corporate-bill-print"));
 
@@ -67,6 +70,23 @@ export function AdminRouter() {
                 <Switch>
                     <Route path="/admin/setup/:token" component={StaffSetupPage} />
                 </Switch>
+            </Suspense>
+        );
+    }
+
+    /**
+     * The app download page, open to anyone holding the link.
+     *
+     * Checked before the auth gate on purpose. A new member of staff installs
+     * the app before they have an account to sign in with, so putting this
+     * behind the login makes it a door that only opens from inside. Nothing on
+     * it is private — the build is a public release and the page names no
+     * customer, job or figure.
+     */
+    if (location.startsWith("/admin/get-app")) {
+        return (
+            <Suspense fallback={<AdminContentSkeleton />}>
+                <GetAppPage />
             </Suspense>
         );
     }

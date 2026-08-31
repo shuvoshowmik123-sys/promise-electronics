@@ -61,12 +61,16 @@ export async function openStaffApkDownload(): Promise<"apk" | "releases"> {
      * managers were choking on — every byte arriving and the transfer never
      * completing.
      *
-     * Under /api on purpose. The frontend is served by Vercel and only /api/* is
-     * forwarded to the server; anything else is answered with index.html, so the
-     * first attempt at /app/download returned the React app and showed its own
-     * "page not found" instead of a file.
+     * Under an /api prefix on purpose. The frontend is served by Vercel and only
+     * the forwarded prefixes reach this server; anything else is answered with
+     * index.html, so the first attempt at /app/download returned the React app
+     * and showed its own "page not found" instead of a file.
+     *
+     * The /admin one says on its face that this is the staff build, which
+     * matters when the address turns up in a browser history, a chat message or
+     * somebody's downloads list with no other context around it.
      */
-    const target = "/api/app/download";
+    const target = "/admin/api/app/download";
 
     /**
      * Hand the file to the browser rather than navigating this window to it.
