@@ -68,7 +68,17 @@ function installGeolocationShim(): void {
     /** The shape callers already handle: a GeolocationPositionError-like object. */
     const toBrowserError = (err: unknown): GeolocationPositionError => {
         const message = (err as Error)?.message ?? "Location unavailable";
-        const denied = /denied|permission/i.test(message);
+        /**
+         * Location switched off is not permission refused.
+         *
+         * They arrive here as plain sentences from the plugin and the callers
+         * branch on the code alone, so mapping "location disabled" onto
+         * PERMISSION_DENIED tells someone to grant a permission they have
+         * already granted. It is POSITION_UNAVAILABLE: the app may ask, the
+         * phone simply has no fix to give until location is turned on.
+         */
+        const servicesOff = /disabled|location services|not enabled|turned off/i.test(message);
+        const denied = !servicesOff && /denied|permission/i.test(message);
         return {
             code: denied ? 1 : 2, // PERMISSION_DENIED : POSITION_UNAVAILABLE
             message,
@@ -78,22 +88,56 @@ function installGeolocationShim(): void {
         } as GeolocationPositionError;
     };
 
+    /**
+     * Whether we may read a position at all, and how precisely.
+     *
+     * Android 12 and up splits the location dialog in two: Precise and
+     * Approximate. Tapping Approximate grants ACCESS_COARSE_LOCATION and
+     * leaves ACCESS_FINE_LOCATION refused, so the plugin reports
+     * `location: "denied"` with `coarseLocation: "granted"` — a grant that
+     * reads as a refusal to anything checking only the first field.
+     *
+     * This is what blocked staff from checking in. They allowed location, the
+     * app decided they had not, and the message told them to grant a
+     * permission they had already given — with no way forward, because Android
+     * does not ask twice.
+     *
+     * Approximate is good enough for what it is used for here. The attendance
+     * geofence is accuracy-aware and subtracts the reported accuracy before
+     * judging, so a coarse fix comes out as "uncertain" and never as a
+     * confident "outside the office" — nobody is wrongly recorded off-site by
+     * being taken at their word.
+     */
+    const ensureLocationAccess = async (): Promise<"fine" | "coarse" | null> => {
+        const read = (s: { location: string; coarseLocation: string }) =>
+            s.location === "granted" ? "fine" as const
+            : s.coarseLocation === "granted" ? "coarse" as const
+            : null;
+
+        const current = read(await Geolocation.checkPermissions());
+        if (current) return current;
+
+        // checkPermissions never prompts, so this is the only thing that can.
+        return read(await Geolocation.requestPermissions());
+    };
+
     const getCurrentPosition: typeof navigator.geolocation.getCurrentPosition =
         (success, error, options) => {
             (async () => {
                 try {
-                    // Ask first. checkPermissions alone never prompts, so a
-                    // fresh install would report "denied" for ever without it.
-                    const status = await Geolocation.checkPermissions();
-                    if (status.location !== "granted") {
-                        const asked = await Geolocation.requestPermissions();
-                        if (asked.location !== "granted") {
-                            error?.(toBrowserError(new Error("Location permission denied")));
-                            return;
-                        }
+                    const access = await ensureLocationAccess();
+                    if (!access) {
+                        error?.(toBrowserError(new Error("Location permission denied")));
+                        return;
                     }
                     const pos = await Geolocation.getCurrentPosition({
-                        enableHighAccuracy: options?.enableHighAccuracy ?? true,
+                        /**
+                         * Asking for high accuracy on a coarse-only grant is
+                         * asking for something Android has been told not to
+                         * give, and it answers with a failure rather than the
+                         * approximate fix it does have.
+                         */
+                        enableHighAccuracy: access === "fine" ? (options?.enableHighAccuracy ?? true) : false,
                         timeout: options?.timeout ?? 15000,
                         maximumAge: options?.maximumAge ?? 0,
                     });
@@ -113,17 +157,14 @@ function installGeolocationShim(): void {
 
         (async () => {
             try {
-                const status = await Geolocation.checkPermissions();
-                if (status.location !== "granted") {
-                    const asked = await Geolocation.requestPermissions();
-                    if (asked.location !== "granted") {
-                        error?.(toBrowserError(new Error("Location permission denied")));
-                        return;
-                    }
+                const access = await ensureLocationAccess();
+                if (!access) {
+                    error?.(toBrowserError(new Error("Location permission denied")));
+                    return;
                 }
                 const id = await Geolocation.watchPosition(
                     {
-                        enableHighAccuracy: options?.enableHighAccuracy ?? true,
+                        enableHighAccuracy: access === "fine" ? (options?.enableHighAccuracy ?? true) : false,
                         timeout: options?.timeout ?? 15000,
                     },
                     (pos, err) => {

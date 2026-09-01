@@ -445,6 +445,14 @@ export default function ShiftTab() {
                 const code = err?.code ?? 0;
                 setGpsState(gpsStateAfterRead({ ok: false, code }));
                 if (code === 1) throw new Error("Location permission is required to check in.");
+                /*
+                 * "Move to a clearer area" is wrong advice when location is
+                 * switched off, and walking outside to fix it is the one thing
+                 * that cannot work. The two are told apart by the message.
+                 */
+                if (/disabled|location services|not enabled|turned off/i.test(err?.message || "")) {
+                    throw new Error("Location is turned off on this phone. Switch it on, then check in.");
+                }
                 throw new Error("Could not get GPS location. Move to a clearer area and try again.");
             }
             return attendanceApi.checkIn(undefined, loc.lat, loc.lng, loc.accuracy);
@@ -463,6 +471,9 @@ export default function ShiftTab() {
             } catch (err: any) {
                 const code = err?.code ?? 0;
                 if (code === 1) throw new Error("Location permission is required to check out. Enable it in your browser settings.");
+                if (/disabled|location services|not enabled|turned off/i.test(err?.message || "")) {
+                    throw new Error("Location is turned off on this phone. Switch it on, then check out.");
+                }
                 throw new Error("Could not get GPS for check-out. Move to a clearer area and try again.");
             }
             return attendanceApi.checkOut(loc.lat, loc.lng, loc.accuracy);
