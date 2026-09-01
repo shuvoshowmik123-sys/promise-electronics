@@ -19,6 +19,7 @@ import { useEffect, useState } from "react";
 import { Download, Smartphone, ShieldCheck, Copy, Check, ArrowLeft, Loader2 } from "lucide-react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
+import { getApiUrl } from "@/lib/config";
 
 type Latest = {
     version: string;
@@ -43,7 +44,7 @@ export default function GetAppPage() {
         let cancelled = false;
         (async () => {
             try {
-                const res = await fetch("/admin/api/app/latest", { headers: { Accept: "application/json" } });
+                const res = await fetch(getApiUrl("/admin/api/app/latest"), { headers: { Accept: "application/json" } });
                 if (!res.ok) throw new Error(String(res.status));
                 const data = (await res.json()) as Latest;
                 if (cancelled) return;

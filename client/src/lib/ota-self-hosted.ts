@@ -38,6 +38,7 @@
 import { Capacitor } from "@capacitor/core";
 import { App as CapacitorApp } from "@capacitor/app";
 import { CapacitorUpdater } from "@capgo/capacitor-updater";
+import { getApiUrl } from "./config";
 
 const LAST_CHECKED_KEY = "staff-app-last-update-check";
 
@@ -97,11 +98,26 @@ function lastChecked(): number | null {
     } catch { return null; }
 }
 
-/** What the server is offering, both halves. */
+/**
+ * What the server is offering, both halves.
+ *
+ * Through getApiUrl, never a bare path. Inside the app the page's origin is
+ * https://localhost — Capacitor's own local server — and a relative URL is
+ * answered by it, not by us. That server returns index.html for anything it
+ * does not recognise, so the update check received a web page, tried to read it
+ * as JSON, and reported: Unexpected token '<', "<!DOCTYPE"... is not valid JSON.
+ *
+ * Which means the update check never once succeeded in the app. It failed
+ * silently on every launch — the one place it was designed to be silent — and
+ * only became visible when the About screen started showing what it returned.
+ *
+ * main.tsx does rewrite bare paths, but only when VITE_API_URL is set, and it
+ * is set nowhere. Depending on an env var that does not exist is how this hid.
+ */
 async function fetchPublished(): Promise<{ apk: string | null; bundle: { version: string; url: string } | null }> {
     const [apkRes, bundleRes] = await Promise.allSettled([
-        fetch("/admin/api/app/latest", { headers: { Accept: "application/json" } }),
-        fetch("/admin/api/app/bundle", { headers: { Accept: "application/json" } }),
+        fetch(getApiUrl("/admin/api/app/latest"), { headers: { Accept: "application/json" } }),
+        fetch(getApiUrl("/admin/api/app/bundle"), { headers: { Accept: "application/json" } }),
     ]);
 
     let apk: string | null = null;

@@ -14,6 +14,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { Capacitor } from "@capacitor/core";
 import { App as CapacitorApp } from "@capacitor/app";
+import { getApiUrl } from "@/lib/config";
 
 const SKIPPED_KEY = "staff-app-update-skipped";
 
@@ -56,7 +57,9 @@ export function useAppUpdate() {
         (async () => {
             try {
                 const info = await CapacitorApp.getInfo();
-                const res = await fetch("/admin/api/app/latest", { headers: { Accept: "application/json" } });
+                // Absolute: a bare path is answered by the app's own local
+                // server with index.html, not by this API.
+                const res = await fetch(getApiUrl("/admin/api/app/latest"), { headers: { Accept: "application/json" } });
                 if (!res.ok) return;
                 const data = (await res.json()) as { version?: string; downloadUrl?: string };
                 if (cancelled || !data.version || !data.downloadUrl) return;
