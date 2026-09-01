@@ -41,6 +41,8 @@ import { AdminPushRegistrar } from "@/components/admin/AdminPushRegistrar";
 // TEMPORARY: answers connection-test pings. Delete with the test bench.
 import { PushConnectionResponder } from "@/components/admin/PushConnectionResponder";
 import { AppUpdatePrompt } from "@/components/admin/AppUpdatePrompt";
+// Fetches a newer APK by itself and offers the one tap that installs it.
+import { ApkUpdateBanner } from "@/components/admin/ApkUpdateBanner";
 import { DatabaseSyncStatus } from "@/components/admin/DatabaseSyncStatus";
 import {
     adminQueryFromTabSearch,
@@ -1327,6 +1329,7 @@ export default function DesignConcept() {
                 <AdminPushRegistrar />
                 <PushConnectionResponder />
                 <AppUpdatePrompt />
+                <ApkUpdateBanner />
                 <AdminPwaInstallPrompt />
             </div>
         </RollbackProvider>

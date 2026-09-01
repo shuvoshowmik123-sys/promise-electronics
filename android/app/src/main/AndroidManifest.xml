@@ -51,6 +51,17 @@
     <uses-permission android:name="android.permission.INTERNET" />
 
     <!--
+      Needed to hand a downloaded APK to Android's installer.
+
+      Without it the download finishes and the install screen never appears —
+      the app looks like it did nothing. It does not grant a silent install:
+      Android still shows its own confirmation, and on Android 8+ the person
+      must additionally allow this app to install apps, which is a Settings
+      screen the UI links to rather than assuming.
+    -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
+    <!--
       Only INTERNET was declared, which is why the app asked for nothing on
       first run and no notification ever arrived.
 

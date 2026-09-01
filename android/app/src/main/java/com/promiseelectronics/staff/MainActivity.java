@@ -25,6 +25,10 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
+        // Registered before super, which is when Capacitor builds its bridge —
+        // a plugin registered afterwards is not there when the web layer asks
+        // for it, and the call fails with "plugin not implemented".
+        registerPlugin(AppUpdaterPlugin.class);
         super.onCreate(savedInstanceState);
         createNotificationChannel();
         keepTheSession();

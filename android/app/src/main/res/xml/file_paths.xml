@@ -2,4 +2,16 @@
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
     <external-path name="my_images" path="." />
     <cache-path name="my_cache_images" path="." />
+
+    <!--
+      Where the downloaded update is written.
+
+      An app-private external directory, so no storage permission is needed and
+      nothing of ours appears in the user's own Downloads folder. Android's
+      installer cannot read a raw file path from another app, so the APK is
+      handed over as a FileProvider URI, and this entry is what makes that URI
+      resolvable at all. Without it the download succeeds and the install
+      silently refuses.
+    -->
+    <external-files-path name="app_updates" path="Download" />
 </paths>
