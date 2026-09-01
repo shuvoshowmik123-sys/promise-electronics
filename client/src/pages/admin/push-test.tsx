@@ -33,12 +33,21 @@ type Device = {
     lastUsedAt: string | null;
 };
 
+type RegistrationReport = {
+    at: number;
+    stage: "permission-denied" | "no-token" | "register-failed" | "registered";
+    detail: string | null;
+    explanation: string | null;
+};
+
 type Person = {
     userId: string;
     username: string;
     fullName: string;
     role: string;
     devices: Device[];
+    /** Why the app failed to register, when it tried and failed. */
+    lastRegistration: RegistrationReport | null;
 };
 
 type Ping = {
@@ -320,9 +329,24 @@ export default function PushTestPage() {
                                                     </div>
                                                 ))}
                                             </div>
+                                        ) : p.lastRegistration && p.lastRegistration.stage !== "registered" ? (
+                                            /*
+                                              * The app tried and failed, and said why.
+                                              * This is the line that turns "no device
+                                              * registered" from a dead end into a fix.
+                                              */
+                                            <div className="rounded-lg bg-rose-50 px-3 py-2">
+                                                <p className="text-[12px] font-semibold text-rose-900">
+                                                    Registration failed on the phone
+                                                </p>
+                                                <p className="mt-0.5 text-[12px] leading-relaxed text-rose-800">
+                                                    {p.lastRegistration.explanation}
+                                                </p>
+                                            </div>
                                         ) : (
                                             <p className="text-[12px] text-slate-400">
-                                                No device — has not signed into the app
+                                                No device — has not signed into the app,
+                                                or is running a build older than v1.0.3
                                             </p>
                                         )}
                                     </div>

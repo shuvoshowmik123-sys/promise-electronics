@@ -141,6 +141,73 @@ function explain(code: string | null): string | null {
 }
 
 /**
+ * What happened the last time an app tried to register, per person.
+ *
+ * This is the half that was missing, and the reason "no device registered" came
+ * with no explanation. Every failure in the registration chain is swallowed
+ * into a console line: initPushNotifications returns null whether permission
+ * was refused, whether Play Services errored, or whether thirty seconds passed
+ * with no answer, and a failed POST is caught and warned about. On a phone
+ * there is no console to read, so all three look identical from here — silence.
+ *
+ * Now the app says which one it was.
+ */
+type RegistrationReport = {
+    userId: string;
+    at: number;
+    stage: "permission-denied" | "no-token" | "register-failed" | "registered";
+    detail: string | null;
+    platform: string | null;
+};
+
+const registrationReports = new Map<string, RegistrationReport>();
+
+/** Plain words for each stage, so the console does not need a legend. */
+function explainStage(r: RegistrationReport | undefined): string | null {
+    if (!r) return null;
+    switch (r.stage) {
+        case "permission-denied":
+            return "Notifications were refused on the phone. Android only asks once — it has to be turned back on in Settings › Apps › Promise Staff › Notifications.";
+        case "no-token":
+            return `Firebase never issued a token${r.detail ? ` (${r.detail})` : ""}. Permission was given, so this is the device failing to reach Firebase — usually no Play Services, or no network on first run.`;
+        case "register-failed":
+            return `The token was issued but the server refused to store it${r.detail ? ` (${r.detail})` : ""}.`;
+        case "registered":
+            return "Registered successfully.";
+    }
+}
+
+/**
+ * The app reporting what happened when it tried to register.
+ *
+ * Authenticated as whoever is being diagnosed, and stored against them. Kept in
+ * memory with everything else here.
+ */
+router.post(
+    "/api/admin/push-test/registration-report",
+    gate,
+    requireAdminAuth,
+    async (req: Request, res: Response) => {
+        const userId = (req as any).adminSessionUser?.id ?? req.session?.adminUserId;
+        if (!userId) return res.status(401).json({ error: "Admin authentication required" });
+
+        const { stage, detail, platform } = req.body ?? {};
+        const allowed = ["permission-denied", "no-token", "register-failed", "registered"];
+        if (!allowed.includes(stage)) return res.status(400).json({ error: "Unknown stage" });
+
+        registrationReports.set(userId, {
+            userId,
+            at: Date.now(),
+            stage,
+            detail: typeof detail === "string" ? detail.slice(0, 300) : null,
+            platform: typeof platform === "string" ? platform : null,
+        });
+
+        res.json({ ok: true });
+    },
+);
+
+/**
  * Everyone who could be pinged, and what they are holding.
  *
  * Listed per device rather than per person, because a person with a phone and a
@@ -223,7 +290,17 @@ router.get(
                 }
             }
 
-            const list = Array.from(byUser.values()).sort((a, b) => {
+            const withReports = Array.from(byUser.values()).map((u) => {
+                const report = registrationReports.get(u.userId);
+                return {
+                    ...u,
+                    lastRegistration: report
+                        ? { ...report, explanation: explainStage(report) }
+                        : null,
+                };
+            });
+
+            const list = withReports.sort((a, b) => {
                 // People who can actually be tested first.
                 if (a.devices.length !== b.devices.length) return b.devices.length - a.devices.length;
                 return a.username.localeCompare(b.username);
