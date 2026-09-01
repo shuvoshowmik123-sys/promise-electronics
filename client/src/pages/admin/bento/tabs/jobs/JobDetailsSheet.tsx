@@ -6,11 +6,14 @@ import {
     QrCode, FileText, Clock, User, Monitor, AlertCircle,
     PenTool, Users, Edit, Printer, ShoppingCart,
     ArrowLeft, Phone, ShieldCheck, Download, Wrench, ClipboardCheck, FileWarning,
-    MoreHorizontal, CircleDollarSign, Image as ImageIcon, Package,
+    MoreHorizontal, CircleDollarSign, Image as ImageIcon, Package, RotateCcw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { JobPrintDialog } from "@/components/admin/JobPrintDialog";
 import { WarrantySealDialog } from "@/components/admin/WarrantySealDialog";
+import { CreateWarrantyClaimDialog } from "@/components/admin/corporate/CreateWarrantyClaimDialog";
+import { getWarrantyCoverage } from "@shared/warranty-coverage";
+import { useAdminAuth } from "@/contexts/AdminAuthContext";
 import { Badge } from "@/components/ui/badge";
 import {
     DropdownMenu,
@@ -128,6 +131,9 @@ export function JobDetailsSheet({
     const isMobile = useIsMobile();
     const [workSheetOpen, setWorkSheetOpen] = useState(false);
     const [stickerOpen, setStickerOpen] = useState(false);
+    const [claimOpen, setClaimOpen] = useState(false);
+    const [claimDialogOpen, setClaimDialogOpen] = useState(false);
+    const { user } = useAdminAuth();
     const [sealOpen, setSealOpen] = useState(false);
     /**
      * The seal proves a repair happened, so it is offered once the repair has.
@@ -190,6 +196,34 @@ export function JobDetailsSheet({
     const unitSerialDisplay = job ? getJobUnitSerialDisplay(job) : null;
     const jobMedia = job ? getJobMedia(job.mobileMedia) : [];
     const isFinalTesting = job?.status === "Testing";
+
+    /**
+     * Bringing a finished repair back under warranty.
+     *
+     * The claim machinery already existed — the table, the routes, the approve
+     * step, and a dialog that takes an ordinary JobTicket. It was only ever
+     * mounted on corporate screens, so a walk-in customer returning with the
+     * same fault had no way in and staff worked around it by opening a fresh
+     * job that nothing connected to the original. Two jobs, no link, and the
+     * second one billed.
+     *
+     * Only offered once the repair is actually finished. Before delivery there
+     * is nothing to claim against — the job is still open and the work is
+     * simply continuing.
+     */
+    const repairFinished = !!job && ["Completed", "Delivered", "Closed"].includes(job.status || "");
+    const warrantyCoverage = job ? getWarrantyCoverage(job as any) : null;
+    /**
+     * Manager and Super Admin only, by decision.
+     *
+     * Raising the claim and approving it are one action in this dialog — it
+     * creates, approves and opens the new job in a single step — so the person
+     * who can open it is deciding the repair is free. That is not a counter
+     * decision.
+     */
+    const canClaimWarranty =
+        repairFinished &&
+        (user?.role === "Super Admin" || user?.role === "Manager");
     const handleTicketDocument = () => {
         if (!job) return;
         if (isMobile && onDownloadTicket) onDownloadTicket(job);
@@ -825,6 +859,55 @@ export function JobDetailsSheet({
                                 jobNumber={getSafeJobDisplayRef(job as any)}
                             />
                         )}
+                        {/*
+                          * The cover is stated before anything is claimed, and
+                          * it is the system's answer rather than the counter's.
+                          * Two dates run for different lengths, so a fitted
+                          * panel can still be covered months after the labour
+                          * warranty lapsed — deciding that in front of a
+                          * customer is how the promise gets broken both ways.
+                          */}
+                        {claimOpen && job && warrantyCoverage && (
+                            <div className="fixed inset-x-4 bottom-24 z-[95] mx-auto max-w-md rounded-xl border border-slate-200 bg-white p-4 shadow-xl">
+                                <p className="text-[13px] font-bold text-slate-900">Warranty cover</p>
+                                <ul className="mt-2 space-y-1">
+                                    {warrantyCoverage.lines.map((line) => (
+                                        <li
+                                            key={line.kind}
+                                            className={`text-[12px] leading-relaxed ${line.active ? "text-emerald-700" : "text-slate-500"}`}
+                                        >
+                                            {line.summary}
+                                        </li>
+                                    ))}
+                                </ul>
+                                {warrantyCoverage.refusal && (
+                                    <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-[12px] leading-relaxed text-amber-900">
+                                        {warrantyCoverage.refusal}
+                                    </p>
+                                )}
+                                <div className="mt-3 flex gap-2">
+                                    <Button variant="ghost" size="sm" className="flex-1" onClick={() => setClaimOpen(false)}>
+                                        Close
+                                    </Button>
+                                    {warrantyCoverage.covered && (
+                                        <Button
+                                            size="sm"
+                                            className="flex-1 bg-slate-900 text-white hover:bg-slate-800"
+                                            onClick={() => { setClaimOpen(false); setClaimDialogOpen(true); }}
+                                        >
+                                            Raise claim
+                                        </Button>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        <CreateWarrantyClaimDialog
+                            job={job as any}
+                            open={claimDialogOpen}
+                            onOpenChange={setClaimDialogOpen}
+                        />
+
                         {stickerOpen && job && (
                             <JobPrintDialog
                                 open={stickerOpen}
@@ -1155,6 +1238,15 @@ export function JobDetailsSheet({
                                         {repairIsDone && (
                                             <DropdownMenuItem className="gap-2 cursor-pointer" onSelect={() => setSealOpen(true)}>
                                                 <ShieldCheck className="w-4 h-4" /> Print warranty seals
+                                            </DropdownMenuItem>
+                                        )}
+                                        {canClaimWarranty && (
+                                            <DropdownMenuItem
+                                                className="gap-2 cursor-pointer"
+                                                onSelect={() => setClaimOpen(true)}
+                                            >
+                                                <RotateCcw className="w-4 h-4" />
+                                                {warrantyCoverage?.covered ? "Claim under warranty" : "Warranty — check cover"}
                                             </DropdownMenuItem>
                                         )}
                                     </DropdownMenuContent>
