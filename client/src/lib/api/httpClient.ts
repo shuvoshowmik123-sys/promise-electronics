@@ -27,6 +27,62 @@ function clearCsrfCookie(): void {
     document.cookie = 'XSRF-TOKEN=; Max-Age=0; path=/';
 }
 
+/**
+ * The CSRF token, on native, must be fetched the same way the request is sent.
+ *
+ * This is what broke every write in the app — "Session validation failed" when
+ * creating a job, and on anything else that was not a GET.
+ *
+ * The cause is SameSite, not two cookie stores; Capacitor shares one, installing
+ * its CookieManager over the WebView's own. What differs is who enforces
+ * SameSite. The app's WebView reports https://localhost, so a request to
+ * promiseelectronics.com is cross-site, and the session cookie is SameSite=lax
+ * — a browser withholds it. CapacitorHttp goes through Java's CookieHandler,
+ * which does not implement SameSite at all, and sends it.
+ *
+ * So the two paths saw two different sessions. Mutations went out through
+ * CapacitorHttp carrying the real session. The token was fetched with a plain
+ * fetch(), which arrived anonymous, and the server did the reasonable thing:
+ * started a session for it and handed back that session's token. The app then
+ * presented session A's cookie with session B's token and was refused —
+ * correctly.
+ *
+ * Login was unaffected because login is the one route with no CSRF guard, which
+ * is why the app worked right up until the first thing anyone tried to save.
+ *
+ * document.cookie could never have helped either. It reads cookies for the
+ * document's origin, which is https://localhost; XSRF-TOKEN is set on the API's
+ * domain and is not visible there at all.
+ *
+ * Asking through CapacitorHttp puts the question and the answer in one session,
+ * and the token comes back in the response body rather than off a cookie.
+ *
+ * Note this fixes writes only. Anything that must use the WebView's own stack —
+ * EventSource for the live admin stream, above all — is still handed an
+ * anonymous session, and no client change can fix that. The server's own note
+ * in app.ts names the remedy: SESSION_COOKIE_SAMESITE=none in the deployment.
+ */
+let nativeCsrfToken: string | undefined;
+
+async function fetchNativeCsrfToken(): Promise<string | undefined> {
+    try {
+        const res = await CapacitorHttp.get({
+            url: `${API_BASE}/admin/csrf-token`,
+            headers: { Accept: "application/json" },
+        });
+        if (res.status !== 200) return undefined;
+        nativeCsrfToken = res.data?.csrfToken;
+        return nativeCsrfToken;
+    } catch {
+        return undefined;
+    }
+}
+
+/** Forget it, so the next write fetches a fresh one. */
+export function clearNativeCsrfToken(): void {
+    nativeCsrfToken = undefined;
+}
+
 async function fetchFreshCsrfToken(): Promise<string | undefined> {
     if (typeof window === "undefined") return undefined;
     const response = await fetch(`${API_BASE}/admin/csrf-token`, {
@@ -41,6 +97,14 @@ async function fetchFreshCsrfToken(): Promise<string | undefined> {
 async function ensureCsrfToken(method: string): Promise<string | undefined> {
     const upperMethod = method.toUpperCase();
     if (["GET", "HEAD", "OPTIONS", "TRACE"].includes(upperMethod)) return undefined;
+
+    /**
+     * Never document.cookie on native — that is the WebView's jar, and the
+     * request is about to leave through a different one.
+     */
+    if (isNative) {
+        return nativeCsrfToken ?? (await fetchNativeCsrfToken());
+    }
 
     const existing = getCsrfToken();
     if (existing) return existing;
@@ -64,7 +128,33 @@ export async function fetchApi<T>(url: string, options?: FetchApiOptions): Promi
 
     // Use CapacitorHttp on native platforms to bypass CORS/WebView restrictions
     if (isNative) {
-        return nativeFetchApi<T>(fullUrl, { ...requestOptions, timeoutMs, headers: baseHeaders });
+        try {
+            return await nativeFetchApi<T>(fullUrl, { ...requestOptions, timeoutMs, headers: baseHeaders });
+        } catch (error) {
+            /**
+             * One retry with a fresh token.
+             *
+             * A session that was replaced — the server restarted, or the
+             * session rotated — leaves the cached token pointing at a session
+             * that no longer exists. The web path has always recovered from
+             * this; the native path threw straight out of nativeFetchApi and
+             * never reached that code, so the app stayed broken until it was
+             * force-closed.
+             */
+            const failed =
+                error instanceof ApiError &&
+                error.statusCode === 403 &&
+                (error.code === "CSRF_FAILED" || /session validation/i.test(error.message));
+
+            if (failed && !(options as any)?._csrfRetry) {
+                clearNativeCsrfToken();
+                const fresh = await fetchNativeCsrfToken();
+                if (fresh) {
+                    return fetchApi<T>(url, { ...options, _csrfRetry: true } as FetchApiOptions);
+                }
+            }
+            throw error;
+        }
     }
 
     const controller = requestOptions.signal ? null : new AbortController();
