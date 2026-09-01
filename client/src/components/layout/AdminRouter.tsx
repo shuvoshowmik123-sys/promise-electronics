@@ -6,6 +6,7 @@ import { StaffOnboardingGuide } from "@/components/admin/StaffOnboardingGuide";
 import { useAdminAuth, getRoleLandingPath } from "@/contexts/AdminAuthContext";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { Loader2 } from "lucide-react";
+import { Capacitor } from "@capacitor/core";
 
 // The new unified Admin SPA
 const DesignConcept = lazy(() => import("@/pages/admin/design-concept"));
@@ -101,12 +102,23 @@ export function AdminRouter() {
      * About the app: which version is installed, which is published, and
      * whether an update is waiting.
      *
-     * Beside get-app rather than inside the panel shell, and reachable while
-     * signed out for the same reason: someone whose app is misbehaving needs to
-     * read its version, and being unable to sign in is one of the ways an app
-     * misbehaves.
+     * The installed app only. Every number on it — the APK version, the web
+     * bundle running inside it, whether an update is staged for next launch —
+     * describes something a browser does not have. A browser fetches the newest
+     * build every time it loads a page; there is no version to be behind on and
+     * nothing to check, so the screen would be four rows of "latest" and a
+     * button that does nothing.
+     *
+     * The route is guarded, not just the menu entry. Hiding a link is not the
+     * same as the page not existing: this URL is bookmarkable, and it is also
+     * where the app's own update banner points.
+     *
+     * Reachable while signed out, like get-app — someone whose app is
+     * misbehaving needs to read its version, and failing to sign in is one of
+     * the ways an app misbehaves.
      */
     if (location.startsWith("/admin/about-app")) {
+        if (!Capacitor.isNativePlatform()) return <Redirect to="/admin" />;
         return (
             <Suspense fallback={<AdminContentSkeleton />}>
                 <AboutAppPage />

@@ -12,7 +12,7 @@ import {
     FileText, HelpCircle, Settings, Bell, Search, User, Zap,
     PieChart, Users, LineChart, Menu, LogOut,
     ShieldCheck, RotateCcw, FileWarning, Brain, WifiOff, Wrench, MapPinned, Clock, Scale, TrendingUp,
-    Smartphone, Info,
+    Smartphone,
 } from "lucide-react";
 import { canViewDisputes } from "@/lib/disputes-capabilities";
 
@@ -1470,18 +1470,6 @@ function SidebarContent({ groups, activeTab, onSelectTab, isOnline, getTabTier }
                     {/* The rail collapses to icons alone between md and lg, as every item above does. */}
                     <span className="font-medium text-sm tracking-wide hidden lg:inline-block truncate">
                         Get the Android app
-                    </span>
-                </a>
-                <a
-                    href="/admin/about-app"
-                    title="About & updates"
-                    className="flex items-center gap-3 px-3 lg:px-4 py-3 rounded-xl cursor-pointer transition-all duration-300 group text-slate-400 hover:bg-white/5 hover:text-white"
-                >
-                    <div className="h-9 w-9 lg:h-8 lg:w-8 rounded-lg flex items-center justify-center text-white bg-slate-800 group-hover:bg-slate-700 transition-all duration-300 shrink-0">
-                        <Info size={16} />
-                    </div>
-                    <span className="font-medium text-sm tracking-wide hidden lg:inline-block truncate">
-                        About &amp; updates
                     </span>
                 </a>
             </div>

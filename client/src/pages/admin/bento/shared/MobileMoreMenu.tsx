@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { Search, ChevronRight, LogOut, UserCog, Smartphone, Info } from "lucide-react";
+import { Capacitor } from "@capacitor/core";
 import { cn } from "@/lib/utils";
 
 type NavItem = { label: string; id: string; icon: any; color?: string };
@@ -40,6 +41,8 @@ export function MobileMoreMenu({
     onSelect: (id: string) => void;
     onLogout: () => void;
 }) {
+    /** True only inside the installed app, never in a browser. */
+    const isNativeApp = Capacitor.isNativePlatform();
     const [query, setQuery] = useState("");
     const dockIds = useMemo(() => new Set(dockItemIds), [dockItemIds]);
 
@@ -125,28 +128,31 @@ export function MobileMoreMenu({
                 </button>
 
                 {/*
-                  * Getting the Android app.
+                  * These two are opposites, and each belongs to one world only.
                   *
-                  * Here because this is where a phone can act on it. The install
-                  * banner is a nudge that depends on four things which differ from
-                  * phone to phone, and the sidebar carrying the same link is desktop
-                  * only — so on the device that can actually install the app there
-                  * was, until now, no permanent way to reach it.
+                  * In a browser: offer the app, because that is how someone gets
+                  * it. Inside the app: offer its version and update state, because
+                  * that is the only place either means anything — a browser is
+                  * always on the newest build and has nothing to check.
+                  *
+                  * Showing both everywhere put an About screen in the website,
+                  * which is not what it is for.
                   */}
-                <a
-                    href="/admin/get-app"
-                    className="w-full h-13 py-3.5 rounded-2xl border border-slate-900/10 bg-slate-900 text-white font-bold flex items-center justify-center gap-2 active:scale-[0.98] transition-transform"
-                >
-                    <Smartphone className="h-5 w-5" /> Get the Android app
-                </a>
-
-                {/* Version, update state, and a manual check. */}
-                <a
-                    href="/admin/about-app"
-                    className="w-full h-13 py-3.5 rounded-2xl border border-slate-200 bg-white text-slate-700 font-bold flex items-center justify-center gap-2 active:scale-[0.98] transition-transform"
-                >
-                    <Info className="h-5 w-5" /> About &amp; updates
-                </a>
+                {isNativeApp ? (
+                    <a
+                        href="/admin/about-app"
+                        className="w-full h-13 py-3.5 rounded-2xl border border-slate-900/10 bg-slate-900 text-white font-bold flex items-center justify-center gap-2 active:scale-[0.98] transition-transform"
+                    >
+                        <Info className="h-5 w-5" /> About &amp; updates
+                    </a>
+                ) : (
+                    <a
+                        href="/admin/get-app"
+                        className="w-full h-13 py-3.5 rounded-2xl border border-slate-900/10 bg-slate-900 text-white font-bold flex items-center justify-center gap-2 active:scale-[0.98] transition-transform"
+                    >
+                        <Smartphone className="h-5 w-5" /> Get the Android app
+                    </a>
+                )}
 
                 {/* Logout */}
                 <button

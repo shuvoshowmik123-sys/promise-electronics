@@ -17,15 +17,19 @@
  * Opening this screen changes nothing. Someone looking to see which version
  * they are on should not have that act start a four-megabyte download — so the
  * check is a button, and it says what it did.
+ *
+ * The installed app only; the router sends a browser away before this renders.
+ * Every number here describes something a browser does not have — it fetches
+ * the newest build on every page load, so there is no version to be behind on
+ * and nothing to check.
  */
 
 import { useCallback, useEffect, useState } from "react";
 import {
     RefreshCw, CheckCircle2, Download, AlertTriangle, ArrowLeft,
-    Smartphone, Loader2, ArrowUpCircle, Globe,
+    Smartphone, Loader2, ArrowUpCircle,
 } from "lucide-react";
 import { Link } from "wouter";
-import { Capacitor } from "@capacitor/core";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
@@ -60,7 +64,6 @@ function Row({ label, value, hint }: { label: string; value: string; hint?: stri
 }
 
 export default function AboutAppPage() {
-    const isNative = Capacitor.isNativePlatform();
     const [status, setStatus] = useState<UpdateStatus | null>(null);
     const [outcome, setOutcome] = useState<UpdateOutcome | null>(null);
     const [checking, setChecking] = useState(false);
@@ -114,17 +117,13 @@ export default function AboutAppPage() {
                 <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                     <div className="flex items-center gap-4 border-b border-slate-100 p-5">
                         <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-slate-900 text-white">
-                            {isNative ? <Smartphone size={22} /> : <Globe size={22} />}
+                            <Smartphone size={22} />
                         </div>
                         <div className="min-w-0">
                             <h1 className="text-lg font-bold leading-tight text-slate-900">
-                                {isNative ? "Promise Staff app" : "Promise Admin"}
+                                Promise Staff app
                             </h1>
-                            <p className="mt-0.5 text-[13px] text-slate-500">
-                                {isNative
-                                    ? "Installed on this phone"
-                                    : "Running in a browser — always the newest build"}
-                            </p>
+                            <p className="mt-0.5 text-[13px] text-slate-500">Installed on this device</p>
                         </div>
                     </div>
 
@@ -135,26 +134,18 @@ export default function AboutAppPage() {
                     ) : (
                         <>
                             <div className="divide-y divide-slate-100">
-                                {isNative && (
-                                    <Row
-                                        label="App version"
-                                        hint="The installed file. Only a new install changes this."
-                                        value={status.nativeVersion}
-                                    />
-                                )}
+                                <Row
+                                    label="App version"
+                                    hint="The installed file. Only a new install changes this."
+                                    value={status.nativeVersion}
+                                />
                                 <Row
                                     label="Panel version"
-                                    hint={
-                                        isNative
-                                            ? "The part that updates itself, quietly."
-                                            : "The browser always loads the newest."
-                                    }
+                                    hint="The part that updates itself, quietly."
                                     value={
-                                        isNative
-                                            ? status.isBuiltin
-                                                ? `${status.nativeVersion} (built in)`
-                                                : status.bundleVersion
-                                            : "latest"
+                                        status.isBuiltin
+                                            ? `${status.nativeVersion} (built in)`
+                                            : status.bundleVersion
                                     }
                                 />
                                 <Row
@@ -162,9 +153,7 @@ export default function AboutAppPage() {
                                     hint="What this server is offering right now."
                                     value={status.latestBundle ?? status.latestApk ?? "unknown"}
                                 />
-                                {isNative && (
-                                    <Row label="Last checked" value={whenText(status.lastCheckedAt)} />
-                                )}
+                                <Row label="Last checked" value={whenText(status.lastCheckedAt)} />
                             </div>
 
                             {/*
@@ -256,7 +245,7 @@ export default function AboutAppPage() {
                                 <Button
                                     variant="outline"
                                     onClick={check}
-                                    disabled={checking || !isNative}
+                                    disabled={checking}
                                     className="mt-3 h-11 w-full gap-2"
                                 >
                                     <RefreshCw className={cn("h-4 w-4", checking && "animate-spin")} />
@@ -264,9 +253,8 @@ export default function AboutAppPage() {
                                 </Button>
 
                                 <p className="mt-3 text-center text-[12px] leading-relaxed text-slate-400">
-                                    {isNative
-                                        ? "The app checks by itself every time it opens. This button is only for when you would rather not wait."
-                                        : "A browser loads the newest build every time, so there is nothing to check."}
+                                    The app checks by itself every time it opens. This button is only for
+                                    when you would rather not wait.
                                 </p>
                             </div>
                         </>
