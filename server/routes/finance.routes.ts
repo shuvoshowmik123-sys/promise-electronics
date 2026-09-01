@@ -18,6 +18,7 @@ import { db } from '../db.js';
 import { notifyCustomerUpdate } from './middleware/sse-broker.js';
 import { getItemProfit, getProfitSummary } from '../services/profit-report.service.js';
 import { logRouteError } from '../utils/route-error.js';
+import { accountTotals, planAllocation, money } from '../../shared/due-balance.js';
 
 /**
  * The window a report covers, defaulting to the last 30 days.
@@ -911,31 +912,81 @@ router.post(
             }
 
             const phone = decodeURIComponent(req.params.id);
+
+            /**
+             * A settlement discount, forgiven at the counter.
+             *
+             * The 500 left on 52,000 when 51,500 was handed over. Without it the
+             * row could only be left owing for ever — every settled account
+             * keeping a small false balance until receivables fills with money
+             * nobody will pay — or its amount quietly edited, which erases that
+             * anything was given away and makes the invoice disagree with the
+             * paper the customer is holding.
+             */
+            const discount = Number(req.body?.discount ?? 0) || 0;
+            if (discount < 0) {
+                return res.status(400).json({ error: 'A discount cannot be negative.' });
+            }
+            const discountReason = String(req.body?.discountReason ?? '').trim();
+            if (discount > 0.009 && !discountReason) {
+                return res.status(400).json({ error: 'Say why the discount was given.' });
+            }
+
+            const actor = (req as any).adminSessionUser ?? (req as any).user;
+            /**
+             * Giving money away is a different decision from taking it.
+             *
+             * process_payment is held by anyone who works a counter, which is
+             * right for receiving cash and wrong for deciding a balance need not
+             * be paid.
+             */
+            if (discount > 0.009 && actor?.role !== 'Super Admin' && actor?.role !== 'Manager') {
+                return res.status(403).json({
+                    error: 'Only a Manager or Super Admin can settle a balance at a discount.',
+                });
+            }
+
             const open = await db.execute(sql`
-                SELECT id, amount, COALESCE(paid_amount, 0) AS paid_amount
+                SELECT id, invoice, amount,
+                       COALESCE(paid_amount, 0) AS paid_amount,
+                       COALESCE(discount_amount, 0) AS discount_amount
                 FROM due_records
                 WHERE customer_phone = ${phone} AND status <> 'Paid'
-                  AND (amount - COALESCE(paid_amount, 0)) > 0.009
+                  AND (amount - COALESCE(paid_amount, 0) - COALESCE(discount_amount, 0)) > 0.009
                 ORDER BY created_at ASC
             `);
             const rows = (open as unknown as { rows: Array<Record<string, unknown>> }).rows ?? [];
             if (!rows.length) return res.status(400).json({ error: 'Nothing is owed.' });
 
-            const outstanding = rows.reduce(
-                (s, r) => s + (Number(r.amount ?? 0) - Number(r.paid_amount ?? 0)), 0);
-            if (amount > outstanding + 0.009) {
+            /**
+             * The same function the screen used to preview this.
+             *
+             * Two implementations of one rule is two answers, and the preview
+             * would then be a guess about what the server was going to do rather
+             * than the thing it does.
+             */
+            const dues = rows.map((r) => ({
+                id: String(r.id),
+                invoice: String(r.invoice ?? ''),
+                amount: Number(r.amount ?? 0),
+                paidAmount: Number(r.paid_amount ?? 0),
+                discountAmount: Number(r.discount_amount ?? 0),
+            }));
+
+            const outstanding = accountTotals(dues).outstanding;
+            if (amount + discount > outstanding + 0.009) {
                 return res.status(400).json({
                     error: `That is more than the ${outstanding.toLocaleString()} owed.`,
                 });
             }
 
-            let left = amount;
+            const plan = planAllocation(dues, amount, discount);
             const settled: string[] = [];
-            for (const r of rows) {
-                if (left <= 0.009) break;
-                const owed = Number(r.amount ?? 0) - Number(r.paid_amount ?? 0);
-                const take = Math.min(owed, left);
-                const nowPaid = Math.round((Number(r.paid_amount ?? 0) + take) * 100) / 100;
+
+            for (const a of plan.allocations) {
+                const row = dues.find((d) => d.id === a.dueId)!;
+                const nowPaid = money(row.paidAmount + a.applied);
+                const nowDiscount = money(row.discountAmount + a.discounted);
 
                 /**
                  * Through the repository, not raw SQL, so the catch-up job is
@@ -943,22 +994,31 @@ router.post(
                  * leave the job saying unpaid — the exact drift this feature was
                  * just fixed for.
                  */
-                await financeRepo.updateDueRecord(String(r.id), {
+                await financeRepo.updateDueRecord(String(a.dueId), {
                     paidAmount: nowPaid,
-                    status: nowPaid + 0.009 >= Number(r.amount ?? 0) ? 'Paid' : 'Pending',
+                    discountAmount: nowDiscount,
+                    status: a.settled ? 'Paid' : 'Pending',
                     paidAt: new Date(),
+                    ...(a.discounted > 0.009
+                        ? {
+                              discountReason,
+                              discountBy: actor?.name || actor?.id || 'unknown',
+                              discountAt: new Date(),
+                          }
+                        : {}),
                 } as never);
 
-                settled.push(String(r.id));
-                left = Math.round((left - take) * 100) / 100;
+                settled.push(String(a.dueId));
             }
 
             await auditLogger.log({
                 userId: (req as any).session?.adminUserId || 'system',
-                action: 'DUE_PAYMENT_RECORDED',
+                action: discount > 0.009 ? 'DUE_SETTLED_WITH_DISCOUNT' : 'DUE_PAYMENT_RECORDED',
                 entity: 'DueRecord',
                 entityId: settled[0] ?? phone,
-                details: `Recorded ${amount} against ${phone}, applied to ${settled.length} record(s) oldest first`,
+                details:
+                    `Recorded ${amount} against ${phone}, applied to ${settled.length} record(s) oldest first` +
+                    (discount > 0.009 ? ` - ${discount} discounted: ${discountReason}` : ''),
                 severity: 'warning',
                 req,
             }).catch(() => {});
@@ -966,7 +1026,8 @@ router.post(
             res.json({
                 ok: true,
                 applied: amount,
-                remaining: Math.round((outstanding - amount) * 100) / 100,
+                discounted: plan.totalDiscounted,
+                remaining: plan.outstandingAfter,
                 recordsTouched: settled.length,
             });
         } catch (error) {

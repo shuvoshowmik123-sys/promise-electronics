@@ -1052,6 +1052,19 @@ export const dueRecords = pgTable("due_records", {
   dueDate: timestamp("due_date").notNull(),
   paidAt: timestamp("paid_at"),
   paidAmount: real("paid_amount").default(0),
+  /**
+   * Forgiven at settlement — the 500 left on 52,000 when 51,500 was handed over.
+   *
+   * The amount and the payment both stay true and the difference is named, so
+   * the balance is a subtraction anyone can check and the discount shows up as
+   * the cost it is. Editing the amount instead would erase the fact that
+   * anything was given away, and make the invoice disagree with the paper the
+   * customer holds.
+   */
+  discountAmount: real("discount_amount").notNull().default(0),
+  discountReason: text("discount_reason"),
+  discountBy: text("discount_by"),
+  discountAt: timestamp("discount_at"),
   source: text("source").default("manual"),
   customerPhone: text("customer_phone"),
   deviceName: text("device_name"),

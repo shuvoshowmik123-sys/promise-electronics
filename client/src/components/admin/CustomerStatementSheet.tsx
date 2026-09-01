@@ -76,6 +76,16 @@ export function CustomerStatementSheet({
      */
     const [collecting, setCollecting] = useState(false);
     const [amount, setAmount] = useState("");
+    /**
+     * The remainder a manager chooses to forgive so the account closes.
+     *
+     * 52,000 owed, 51,500 handed over, and the 500 written off rather than left
+     * owing for ever. Kept as its own number rather than folded into the
+     * payment: the shop needs to know it took 51,500, not 52,000, and the
+     * difference is a cost, not income.
+     */
+    const [discountOn, setDiscountOn] = useState(false);
+    const [discountReason, setDiscountReason] = useState("");
 
     const { data, isLoading, isError } = useQuery({
         queryKey: ["statement", debtor?.kind, debtor?.id],
@@ -84,10 +94,27 @@ export function CustomerStatementSheet({
         enabled: !!debtor,
     });
 
+    /**
+     * What would still be owed after this payment.
+     *
+     * Derived, never typed. The balance itself is already a subtraction the
+     * server computes from the rows; recomputing it here from the same two
+     * numbers keeps the screen and the ledger saying one thing.
+     */
+    const shortfall = Math.max(0, Math.round((((data?.balance ?? 0) - Number(amount || 0)) * 100)) / 100);
+
     const takePayment = useMutation({
-        mutationFn: () => fetchApi<{ remaining: number }>(
+        mutationFn: () => fetchApi<{ remaining: number; discounted?: number }>(
             `/admin/receivables/${debtor!.kind}/${encodeURIComponent(debtor!.id)}/payment`,
-            { method: "POST", body: JSON.stringify({ amount: Number(amount) }) }),
+            {
+                method: "POST",
+                body: JSON.stringify({
+                    amount: Number(amount),
+                    ...(discountOn && shortfall > 0.009
+                        ? { discount: shortfall, discountReason: discountReason.trim() }
+                        : {}),
+                }),
+            }),
         onSuccess: (r) => {
             toast.success(r.remaining > 0
                 ? `Recorded. ${currency} ${r.remaining.toLocaleString()} still owed.`
@@ -243,6 +270,7 @@ export function CustomerStatementSheet({
                         {data.kind === "retail" && data.balance > 0.009 && (
                             <div className="mx-4 -mt-2 mb-2">
                                 {collecting ? (
+                                    <>
                                     <div className="flex items-center gap-2">
                                         <div className="relative flex-1">
                                             <span className="absolute left-3 top-1/2 -translate-y-1/2 font-semibold text-slate-500">
@@ -256,17 +284,66 @@ export function CustomerStatementSheet({
                                                 onChange={(e) => setAmount(e.target.value)} />
                                         </div>
                                         <Button className="h-12 rounded-xl bg-emerald-600 px-5 hover:bg-emerald-700"
-                                            disabled={!Number(amount) || takePayment.isPending}
+                                            disabled={!Number(amount) || takePayment.isPending || (discountOn && !discountReason.trim())}
                                             onClick={() => takePayment.mutate()}>
                                             {takePayment.isPending
                                                 ? <Loader2 className="h-4 w-4 animate-spin" />
                                                 : <Check className="h-4 w-4" />}
                                         </Button>
                                         <Button variant="ghost" className="h-12 rounded-xl"
-                                            onClick={() => { setCollecting(false); setAmount(""); }}>
+                                            onClick={() => { setCollecting(false); setAmount(""); setDiscountOn(false); setDiscountReason(""); }}>
                                             Cancel
                                         </Button>
                                     </div>
+
+                                {/*
+                                  * What the money will do, before it is taken.
+                                  *
+                                  * A short payment is the ordinary case at a
+                                  * counter, and the only question that follows
+                                  * is whether the remainder stays owed or is
+                                  * forgiven. Asking it here, with the figure
+                                  * already worked out, is the difference
+                                  * between a decision and an arithmetic
+                                  * exercise in front of a waiting customer.
+                                  */}
+                                {shortfall > 0.009 && (
+                                    <div className="mt-2 rounded-xl border border-slate-200 bg-white p-3">
+                                        <p className="text-[13px] text-slate-700">
+                                            {currency} {shortfall.toLocaleString()} would still be owed.
+                                        </p>
+                                        <div className="mt-2 flex gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => { setDiscountOn(false); setDiscountReason(""); }}
+                                                className={`h-9 flex-1 rounded-lg border text-[12px] font-bold ${!discountOn ? "border-slate-900 bg-slate-900 text-white" : "border-slate-200 bg-white text-slate-600"}`}
+                                            >
+                                                Leave as due
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setDiscountOn(true)}
+                                                className={`h-9 flex-1 rounded-lg border text-[12px] font-bold ${discountOn ? "border-slate-900 bg-slate-900 text-white" : "border-slate-200 bg-white text-slate-600"}`}
+                                            >
+                                                Settle — discount {currency} {shortfall.toLocaleString()}
+                                            </button>
+                                        </div>
+                                        {discountOn && (
+                                            <Input
+                                                className="mt-2 h-10 rounded-lg"
+                                                placeholder="Why? (rounding, goodwill, agreed)"
+                                                value={discountReason}
+                                                onChange={(e) => setDiscountReason(e.target.value)}
+                                            />
+                                        )}
+                                        {discountOn && !discountReason.trim() && (
+                                            <p className="mt-1.5 text-[11px] text-amber-700">
+                                                A reason is required — money given away needs one.
+                                            </p>
+                                        )}
+                                    </div>
+                                )}
+                                    </>
                                 ) : (
                                     <div className="flex gap-2">
                                         <Button variant="outline"

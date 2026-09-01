@@ -71,7 +71,7 @@ const ADVISORY_LOCK_KEY = "promise_main_schema_migrate";
 const LOCK_WAIT_BUDGET_MS = parseInt(process.env.MAIN_MIGRATION_LOCK_WAIT_MS || "60000", 10);
 const LOCK_POLL_INTERVAL_MS = parseInt(process.env.MAIN_MIGRATION_LOCK_POLL_MS || "1000", 10);
 
-export const REQUIRED_MAIN_SCHEMA_VERSION = "2026_09_02_job_intake_detail";
+export const REQUIRED_MAIN_SCHEMA_VERSION = "2026_09_02_due_settlement_discount";
 
 export const MAIN_SCHEMA_MIGRATIONS: MainSchemaMigration[] = [
   {
@@ -2676,6 +2676,69 @@ export const MAIN_SCHEMA_MIGRATIONS: MainSchemaMigration[] = [
           AND job_tickets.device IS NOT NULL
           AND lower(btrim(job_tickets.device)) = lower(matched.name)
       `);
+    },
+  },
+  {
+    id: "2026_09_02_due_settlement_discount",
+    description:
+      "due_records: settlement discount, so a rounded-off balance closes honestly",
+    up: async (client) => {
+      /**
+       * Settling a balance for slightly less than it says.
+       *
+       * A customer owes 52,000 and hands over 51,500, and the 500 is forgiven
+       * at the counter. There was nowhere to record that. The row could only be
+       * left owing 500 for ever, or its amount quietly edited — which erases
+       * the fact that a discount was ever given and makes the invoice disagree
+       * with the paper the customer holds.
+       *
+       * Neither is harmless. Left owing, every settled account keeps a small
+       * false balance and receivables slowly fills with money nobody will pay.
+       * Edited, the shop loses the only record that it chose to give something
+       * away, and the discount never appears as the cost it is.
+       *
+       * So the amount stays true, the payment stays true, and the difference is
+       * named. The balance is then a subtraction anyone can check:
+       *
+       *     amount − paid_amount − discount_amount
+       */
+      await client.query(`ALTER TABLE due_records ADD COLUMN IF NOT EXISTS discount_amount REAL NOT NULL DEFAULT 0`);
+
+      /**
+       * Who allowed it and why, on the row itself.
+       *
+       * Money given away is the one decision that most needs a name against
+       * it. Kept here rather than only in the audit log because the question is
+       * always asked while looking at the balance, and an answer that requires
+       * opening another screen is an answer nobody reads.
+       */
+      await client.query(`ALTER TABLE due_records ADD COLUMN IF NOT EXISTS discount_reason TEXT`);
+      await client.query(`ALTER TABLE due_records ADD COLUMN IF NOT EXISTS discount_by TEXT`);
+      await client.query(`ALTER TABLE due_records ADD COLUMN IF NOT EXISTS discount_at TIMESTAMP`);
+
+      /**
+       * A discount cannot exceed what is owed, and cannot be negative.
+       *
+       * Enforced by the database rather than by the screen that writes it.
+       * There are already several paths into this table and there will be more;
+       * a rule that lives in one of them is not a rule. A negative discount
+       * would silently invent debt, and one larger than the balance would make
+       * the account owe less than nothing.
+       */
+      await client.query(`
+        ALTER TABLE due_records
+        DROP CONSTRAINT IF EXISTS due_records_discount_within_amount
+      `);
+      await client.query(`
+        ALTER TABLE due_records
+        ADD CONSTRAINT due_records_discount_within_amount
+        CHECK (discount_amount >= 0 AND discount_amount <= amount)
+      `);
+
+      /** Settled accounts are read constantly; unsettled ones are what anyone acts on. */
+      await client.query(`CREATE INDEX IF NOT EXISTS idx_due_records_open
+        ON due_records (customer_phone)
+        WHERE status <> 'Paid'`);
     },
   },
 ];
