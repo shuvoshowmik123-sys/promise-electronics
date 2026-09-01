@@ -174,3 +174,6 @@ PromiseStaff-Keystore/
 *.keystore
 *.jks
 keystore.properties
+
+# OTA web bundles, built by npm run app:bundle and attached to a release
+dist/bundles/

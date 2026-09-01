@@ -41,6 +41,7 @@
     "schema:check:prod": "tsx scripts/check-production-schema.ts",
     "seed:policies": "node scripts/seed-policies.mjs",
     "app:sync": "npm run build && cap sync android",
+    "app:bundle": "node scripts/make-web-bundle.mjs",
     "app:open": "cap open android"
   },
   "dependencies": {

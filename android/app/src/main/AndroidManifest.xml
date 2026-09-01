@@ -24,6 +24,17 @@
 
         </activity>
 
+        <!--
+          The channel Firebase falls back to when a message names one the app
+          has not created. MainActivity creates admin_notifications on launch,
+          but a notification can arrive before the app has ever been opened —
+          and without this line that one lands in Android's own "Miscellaneous"
+          bucket at default importance, silently.
+        -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="admin_notifications" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

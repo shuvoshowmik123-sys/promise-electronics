@@ -124,6 +124,69 @@ async function resolveViaHtml(): Promise<Resolved | null> {
     }
 }
 
+/**
+ * The newest web bundle on the release, for the app to update itself with.
+ *
+ * The APK and this zip are published side by side. The APK is the shell —
+ * permissions, plugins, the notification channel — and changes rarely. The zip
+ * is the admin panel itself, and is almost always what actually needs fixing.
+ * Separating them is what lets a bug fix reach a phone with nobody downloading
+ * anything.
+ *
+ * Cached with the same rules as the APK, and resolved the same way: plain HTML
+ * pages GitHub does not rate limit.
+ */
+type ResolvedBundle = { url: string; version: string; at: number };
+let cachedBundle: ResolvedBundle | null = null;
+
+async function resolveBundle(): Promise<ResolvedBundle | null> {
+    if (cachedBundle && Date.now() - cachedBundle.at < CACHE_MS) return cachedBundle;
+
+    try {
+        const latest = await fetch(`https://github.com/${REPO}/releases/latest`, {
+            redirect: "manual",
+            headers: { "User-Agent": "promise-staff-app" },
+        });
+        const tag = (latest.headers.get("location") ?? "").split("/tag/")[1]?.trim();
+        if (!tag) return cachedBundle;
+
+        const page = await fetch(`https://github.com/${REPO}/releases/expanded_assets/${tag}`, {
+            headers: { "User-Agent": "promise-staff-app" },
+        });
+        if (!page.ok) return cachedBundle;
+        const html = await page.text();
+
+        const match = html.match(
+            new RegExp(`/${REPO}/releases/download/[^"']+\.zip`, "i"),
+        );
+        if (!match) return cachedBundle;
+
+        cachedBundle = {
+            url: `https://github.com${match[0]}`,
+            // The tag is the version, as with the APK. The two move together.
+            version: tag.replace(/^v/i, ""),
+            at: Date.now(),
+        };
+        return cachedBundle;
+    } catch {
+        return cachedBundle;
+    }
+}
+
+/**
+ * Which web bundle the app should be running.
+ *
+ * Answers 204 rather than an error when a release carries no zip. There is
+ * nothing wrong in that case — it is a release that only changed the shell —
+ * and an app that treats "nothing to do" as a failure will log an error on
+ * every launch for ever.
+ */
+router.get(["/api/app/bundle", "/admin/api/app/bundle"], async (_req: Request, res: Response) => {
+    const bundle = await resolveBundle();
+    if (!bundle) return res.status(204).end();
+    res.json({ version: bundle.version, url: bundle.url });
+});
+
 /** The asset's size in bytes, or null if the release host will not say. */
 async function contentLength(url: string): Promise<number | null> {
     try {

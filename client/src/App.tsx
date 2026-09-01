@@ -116,7 +116,8 @@ import { GoogleAuth } from "@codetrix-studio/capacitor-google-auth";
 import { SpeedInsights } from "@vercel/speed-insights/react";
 
 import { initPushNotifications, onPushNotificationReceived, onPushNotificationAction } from "@/lib/native-features";
-import { initOTAUpdates, checkForUpdates } from "@/lib/otaUpdates";
+import { initOTAUpdates } from "@/lib/otaUpdates";
+import { checkForWebBundleUpdate } from "@/lib/ota-self-hosted";
 import { initQueryPersistence } from "@/lib/queryClient";
 import { registerServiceWorker } from "@/lib/sw-register";
 
@@ -147,11 +148,14 @@ function App() {
        * wrapped. One unconfigured plugin should cost its own feature, not the
        * whole app.
        */
+      /*
+       * initOTAUpdates first, because it is what calls notifyAppReady() — the
+       * signal that says this bundle started successfully. Without it, a bundle
+       * staged by the check below would be rolled back on the launch after
+       * next, and the update would appear to install and then undo itself.
+       */
       initOTAUpdates()
-        .then(() => checkForUpdates())
-        .then((update) => {
-          if (update) console.log('[App] Update available:', update.version);
-        })
+        .then(() => checkForWebBundleUpdate())
         .catch((err) => {
           console.warn('[App] OTA initialization skipped:', err?.message || err);
         });
