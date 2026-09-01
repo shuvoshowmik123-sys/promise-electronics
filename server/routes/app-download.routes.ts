@@ -98,30 +98,82 @@ const CACHE_MS = 15 * 60 * 1000;
  */
 async function resolveViaHtml(): Promise<Resolved | null> {
     try {
-        const latest = await fetch(`https://github.com/${REPO}/releases/latest`, {
-            redirect: "manual",
-            headers: { "User-Agent": "promise-staff-app" },
-        });
-        const location = latest.headers.get("location") ?? "";
-        const tag = location.split("/tag/")[1]?.trim();
-        if (!tag) return null;
+        /**
+         * Walk back until an APK is found, rather than looking only at the
+         * newest release.
+         *
+         * Most releases from here on carry a web bundle and no APK — that is
+         * the point of the bundle, and a fix that needs no new shell should not
+         * ship one. But looking only at the newest release means the first such
+         * release makes the APK vanish: the download page answers 503, the
+         * install banner offers nothing, and new staff cannot get the app at
+         * all, all because a release deliberately did not include something.
+         *
+         * So the newest release that actually has an APK is the answer, and the
+         * tag reported is that release's — not the newest tag. This matters:
+         * the app compares its own version against what is returned, and
+         * reporting the newest tag would tell a phone on 1.0.4 that 1.0.5 is
+         * available and hand it the 1.0.4 file, prompting an install that
+         * changes nothing, for ever.
+         */
+        const tags = await recentTags();
+        for (const tag of tags) {
+            const page = await fetch(`https://github.com/${REPO}/releases/expanded_assets/${tag}`, {
+                headers: { "User-Agent": "promise-staff-app" },
+            });
+            if (!page.ok) continue;
+            const html = await page.text();
 
-        const page = await fetch(`https://github.com/${REPO}/releases/expanded_assets/${tag}`, {
-            headers: { "User-Agent": "promise-staff-app" },
-        });
-        if (!page.ok) return null;
-        const html = await page.text();
+            const match = html.match(
+                new RegExp(`/${REPO}/releases/download/[^"']+\.apk`, "i"),
+            );
+            if (!match) continue;
 
-        const match = html.match(
-            new RegExp(`/${REPO}/releases/download/[^"']+\.apk`, "i"),
-        );
-        if (!match) return null;
-
-        const url = `https://github.com${match[0]}`;
-        return { url, name: decodeURIComponent(url.split("/").pop() || STABLE_ASSET), tag, at: Date.now() };
+            const url = `https://github.com${match[0]}`;
+            return { url, name: decodeURIComponent(url.split("/").pop() || STABLE_ASSET), tag, at: Date.now() };
+        }
+        return null;
     } catch {
         return null;
     }
+}
+
+/**
+ * Recent release tags, newest first, without touching the API.
+ *
+ * The releases page lists them as ordinary links. Capped at a handful because
+ * an APK missing from the last several releases is a mistake worth surfacing,
+ * not something to paper over by trawling years of history.
+ */
+async function recentTags(limit = 8): Promise<string[]> {
+    const tags: string[] = [];
+
+    // The newest, via the redirect — cheap and always correct.
+    const latest = await fetch(`https://github.com/${REPO}/releases/latest`, {
+        redirect: "manual",
+        headers: { "User-Agent": "promise-staff-app" },
+    });
+    const newest = (latest.headers.get("location") ?? "").split("/tag/")[1]?.trim();
+    if (newest) tags.push(newest);
+
+    try {
+        const page = await fetch(`https://github.com/${REPO}/releases`, {
+            headers: { "User-Agent": "promise-staff-app" },
+        });
+        if (page.ok) {
+            const html = await page.text();
+            const re = new RegExp(`/${REPO}/releases/tag/([^"'\s]+)`, "g");
+            let m: RegExpExecArray | null;
+            while ((m = re.exec(html)) !== null && tags.length < limit) {
+                const tag = decodeURIComponent(m[1]);
+                if (!tags.includes(tag)) tags.push(tag);
+            }
+        }
+    } catch {
+        /* the newest alone is better than nothing */
+    }
+
+    return tags.slice(0, limit);
 }
 
 /**
