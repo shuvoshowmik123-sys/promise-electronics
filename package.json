@@ -42,6 +42,7 @@
     "seed:policies": "node scripts/seed-policies.mjs",
     "app:sync": "npm run build && cap sync android",
     "app:bundle": "node scripts/make-web-bundle.mjs",
+    "test:smoke": "node scripts/smoke-test.mjs",
     "app:open": "cap open android"
   },
   "dependencies": {

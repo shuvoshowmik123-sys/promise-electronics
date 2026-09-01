@@ -350,7 +350,17 @@ export function CreateJobDrawer({
         if (isB2bLane(lane) && step === 1 && !selectedAccount) return "Select an existing account. Account creation is not available here.";
         if (isB2bLane(lane) && step === 2 && units.some((unit) => !unit.device.trim() || !unit.issue.trim())) return "Each unit needs a device and a reported problem.";
         return "";
-    }, [creatingParty, customerDevice, customerIssue, customerName, lane, newPartyName, newPartyPhone, selectedAccount, selectedParty, step, units]);
+        /*
+         * customerPhone belongs here.
+         *
+         * It was read by the check above and left out of this list, so the
+         * message was computed once against whatever the phone happened to be
+         * and then never recomputed when it changed. Type a partial number,
+         * then touch any other field, and the complaint appears — and finishing
+         * the number does not clear it, because nothing recomputes. The screen
+         * asks for ten digits while ten digits are sitting in the box.
+         */
+    }, [creatingParty, customerDevice, customerIssue, customerName, customerPhone, lane, newPartyName, newPartyPhone, selectedAccount, selectedParty, step, units]);
 
     const selectCustomer = (item: { name: string; phone: string; shortAddress: string | null }) => {
         setCustomerName(item.name);
