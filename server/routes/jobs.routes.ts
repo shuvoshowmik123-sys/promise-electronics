@@ -17,7 +17,7 @@ import { publishAdminNotificationEvent, publishJobTicketEvent } from '../service
 import { logModelCase } from '../brain/kg.service.js';
 import { bindCustomerToJob, recordJobClosed } from '../services/canonical-customer.service.js';
 import { db } from '../db.js';
-import { localPurchases } from '../../shared/schema.js';
+import { localPurchases, jobStockDeductions } from '../../shared/schema.js';
 import { eq, sql } from 'drizzle-orm';
 import {
     transitionJobStatus,
@@ -558,11 +558,65 @@ router.post('/api/job-tickets/:id/advance-status', requireAdminAuth, requireGran
         }
 
         const nextStatus = nextLinearStatus(currentStatus);
+        /** Carries a Manager's parts override into the patch written below. */
+        let extraPatchPartsOverride: Record<string, unknown> = {};
         if (!nextStatus) {
             return res.status(400).json({ error: `Cannot mathematically advance from terminal status: ${currentStatus}` });
         }
 
         if (nextStatus === 'Completed') {
+            /**
+             * A repair cannot close until somebody has said what it consumed.
+             *
+             * job_stock_deductions held 5 rows against 2,121 jobs. The
+             * declaration screen exists, is well built, offers "Nothing was
+             * used" in one tap, and a nightly nudge asks people to use it — and
+             * still 5 rows, because nothing ever required it. So parts fitted
+             * are absent from the costing and repair profit reads high by
+             * however many were quietly used.
+             *
+             * A nudge was already tried. This is the gate.
+             *
+             * "Nothing was used" satisfies it, because most repairs genuinely
+             * consume nothing worth counting and an honest empty answer must be
+             * as easy as a full one — otherwise people invent a part to make the
+             * prompt go away, which is worse than the silence it replaced.
+             */
+            const declaredRows = await db
+                .select()
+                .from(jobStockDeductions)
+                .where(eq(jobStockDeductions.jobTicketId, jobId))
+                .limit(1);
+            const declared = declaredRows.length > 0 || !!(job as any).partsDeclaredAt;
+
+            if (!declared) {
+                /**
+                 * A Manager may close without one, and it is recorded as that.
+                 *
+                 * A technician can be off shift with a customer waiting at the
+                 * counter, and a gate with no way through gets worked around
+                 * some other way — usually by not using the system. The
+                 * override is deliberate, named, and countable, which is the
+                 * difference between a documented exception and a hole.
+                 */
+                const actor = (req as any).user;
+                const override = req.body?.partsOverride === true;
+                const mayOverride = actor?.role === 'Super Admin' || actor?.role === 'Manager';
+
+                if (!override || !mayOverride) {
+                    return res.status(400).json({
+                        error: 'Say which parts this repair used before completing it. If none were used, record that — it takes one tap.',
+                        code: 'PARTS_NOT_DECLARED',
+                        canOverride: mayOverride,
+                    });
+                }
+
+                extraPatchPartsOverride = {
+                    partsDeclaredAt: new Date(),
+                    partsDeclaredBy: `override:${actor?.name || actor?.id || 'unknown'}`,
+                };
+            }
+
             const purchases = await db.select().from(localPurchases).where(eq(localPurchases.jobTicketId, jobId));
             const dirty = purchases.filter(p => !p.receiptImageUrl || p.status !== 'Consumed');
             if (dirty.length > 0) {
@@ -574,7 +628,7 @@ router.post('/api/job-tickets/:id/advance-status', requireAdminAuth, requireGran
         }
 
         const testingConfirmed = isExplicitTestingConfirmed(req.body?.testingConfirmed);
-        const extraPatch: Record<string, unknown> = {};
+        const extraPatch: Record<string, unknown> = { ...extraPatchPartsOverride };
         if (nextStatus === 'Completed') {
             const completedAt = new Date();
             extraPatch.completedAt = completedAt;

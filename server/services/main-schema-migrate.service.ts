@@ -71,7 +71,7 @@ const ADVISORY_LOCK_KEY = "promise_main_schema_migrate";
 const LOCK_WAIT_BUDGET_MS = parseInt(process.env.MAIN_MIGRATION_LOCK_WAIT_MS || "60000", 10);
 const LOCK_POLL_INTERVAL_MS = parseInt(process.env.MAIN_MIGRATION_LOCK_POLL_MS || "1000", 10);
 
-export const REQUIRED_MAIN_SCHEMA_VERSION = "2026_09_02_due_settlement_discount";
+export const REQUIRED_MAIN_SCHEMA_VERSION = "2026_09_02_part_identity";
 
 export const MAIN_SCHEMA_MIGRATIONS: MainSchemaMigration[] = [
   {
@@ -2739,6 +2739,177 @@ export const MAIN_SCHEMA_MIGRATIONS: MainSchemaMigration[] = [
       await client.query(`CREATE INDEX IF NOT EXISTS idx_due_records_open
         ON due_records (customer_phone)
         WHERE status <> 'Paid'`);
+    },
+  },
+  {
+    id: "2026_09_02_part_cost_snapshot",
+    description:
+      "job_stock_deductions: cost snapshotted when a part is fitted, and who set it",
+    up: async (client) => {
+      /**
+       * What the part actually cost this job, frozen at the moment it was used.
+       *
+       * Profit read inventory_items.avg_cost_price live, and that column is a
+       * weighted average which moves every time stock is bought. So a repair
+       * closed in June was silently repriced every time the same part was
+       * purchased at a different rate — last month's profit changing on its own,
+       * with nothing in the system recording that it had.
+       *
+       * The same table already solved this for warranty: warranty_days is
+       * snapshotted onto the job when fitted, "so later edits here never change
+       * a warranty already sold". Cost needed the identical treatment and never
+       * got it.
+       *
+       * NULL is a real answer, exactly as it is on the inventory column. Stock
+       * held before cost tracking has no purchase price, and reading that as
+       * zero would make the whole repair look like pure profit. Reports exclude
+       * unknown-cost lines rather than valuing them.
+       */
+      await client.query(`ALTER TABLE job_stock_deductions ADD COLUMN IF NOT EXISTS unit_cost REAL`);
+
+      /**
+       * Where that figure came from.
+       *
+       * 'inventory' is the snapshot taken automatically. 'manual' means a
+       * Manager knew better — a part bought that morning at a price the average
+       * has not caught up with, or a supplier's one-off rate. Both are
+       * legitimate; conflating them is not, because only one of them can be
+       * checked against a purchase record later.
+       */
+      await client.query(
+        `ALTER TABLE job_stock_deductions ADD COLUMN IF NOT EXISTS cost_source TEXT NOT NULL DEFAULT 'inventory'`,
+      );
+      await client.query(`ALTER TABLE job_stock_deductions ADD COLUMN IF NOT EXISTS cost_set_by TEXT`);
+      await client.query(`ALTER TABLE job_stock_deductions ADD COLUMN IF NOT EXISTS cost_set_at TIMESTAMP`);
+
+      /**
+       * A cost cannot be negative. It may be zero — a part given by a supplier,
+       * or salvaged from a written-off set, genuinely cost nothing.
+       */
+      await client.query(`
+        ALTER TABLE job_stock_deductions
+        DROP CONSTRAINT IF EXISTS job_stock_deductions_cost_not_negative
+      `);
+      await client.query(`
+        ALTER TABLE job_stock_deductions
+        ADD CONSTRAINT job_stock_deductions_cost_not_negative
+        CHECK (unit_cost IS NULL OR unit_cost >= 0)
+      `);
+
+      /**
+       * Backfill the five rows that exist from today's average.
+       *
+       * Openly imperfect: today's average is not necessarily what those parts
+       * cost when they were fitted. It is recorded as 'inventory' rather than
+       * pretending otherwise, and five rows against two thousand jobs is not a
+       * figure anyone is reporting on. Everything fitted from here is snapshotted
+       * properly.
+       */
+      await client.query(`
+        UPDATE job_stock_deductions d
+        SET unit_cost = i.avg_cost_price
+        FROM inventory_items i
+        WHERE d.inventory_item_id = i.id
+          AND d.unit_cost IS NULL
+          AND i.avg_cost_price IS NOT NULL
+      `);
+
+      /**
+       * "Nothing was used" needed somewhere to live.
+       *
+       * The declaration screen offers it as a one-tap answer and its own comment
+       * explains why: most repairs consume nothing worth counting, and without
+       * an explicit way to say so "the honest answer and the unanswered one look
+       * identical". They were identical, because nothing stored it. The button
+       * existed and the column did not.
+       *
+       * With this, a job is declared when it has deduction rows OR this stamp.
+       * That is what the completion gate can ask about, and what a nudge can use
+       * to stop pestering someone who already answered.
+       */
+      await client.query(`ALTER TABLE job_tickets ADD COLUMN IF NOT EXISTS parts_declared_at TIMESTAMP`);
+      await client.query(`ALTER TABLE job_tickets ADD COLUMN IF NOT EXISTS parts_declared_by TEXT`);
+
+      /**
+       * Jobs already carrying a declaration are marked as declared.
+       *
+       * Only the five that have deduction rows. Everything else stays
+       * undeclared, which is the truth — and is what the gate will start asking
+       * about from now on rather than pretending two thousand old jobs were
+       * answered.
+       */
+      await client.query(`
+        UPDATE job_tickets j
+        SET parts_declared_at = j.completed_at, parts_declared_by = 'backfill'
+        WHERE j.parts_declared_at IS NULL
+          AND EXISTS (SELECT 1 FROM job_stock_deductions d WHERE d.job_ticket_id = j.id)
+      `);
+    },
+  },
+  {
+    id: "2026_09_02_part_identity",
+    description:
+      "inventory_items and job_stock_deductions: part model number and part type",
+    up: async (client) => {
+      /**
+       * Which part it actually is.
+       *
+       * inventory_items carried a name and a category and nothing else, so a
+       * panel could be recorded only as "43 inch panel". For a television repair
+       * shop that is not an identification: panels are not interchangeable by
+       * size, and neither are motherboards. Two sets on the same bench can want
+       * two different boards that share every word in their names.
+       *
+       * Everything that follows is downstream of that one absence. A part cannot
+       * be matched to a part request, a warranty claim on a fitted panel cannot
+       * name what was fitted, the same physical part typed differently on two
+       * days counts as two, and nobody can answer "have we got that one" without
+       * walking to the shelf.
+       *
+       * part_type is deliberately separate from the existing category. category
+       * groups the shop's stock for browsing; part_type says what the thing is in
+       * repair terms — Panel, Motherboard, Android voice-control motherboard,
+       * Backlight, Power board — which is the vocabulary a technician and a
+       * supplier both use.
+       */
+      await client.query(`ALTER TABLE inventory_items ADD COLUMN IF NOT EXISTS model_number TEXT`);
+      await client.query(`ALTER TABLE inventory_items ADD COLUMN IF NOT EXISTS part_type TEXT`);
+
+      /** Looked up by model constantly, by someone holding the old part. */
+      await client.query(`CREATE INDEX IF NOT EXISTS idx_inventory_model
+        ON inventory_items (lower(model_number))
+        WHERE model_number IS NOT NULL`);
+      await client.query(`CREATE INDEX IF NOT EXISTS idx_inventory_part_type
+        ON inventory_items (part_type)
+        WHERE part_type IS NOT NULL`);
+
+      /**
+       * The same two, snapshotted onto the job when the part is fitted.
+       *
+       * Not a join to inventory. The catalogue row can be renamed, re-modelled
+       * or deleted years before somebody asks what was fitted to this
+       * television, and a warranty claim answered with a blank — or worse, with
+       * a corrected model number — is no answer. The job keeps what was true on
+       * the day, for the same reason cost and warranty days are snapshotted
+       * beside it.
+       */
+      await client.query(`ALTER TABLE job_stock_deductions ADD COLUMN IF NOT EXISTS part_name TEXT`);
+      await client.query(`ALTER TABLE job_stock_deductions ADD COLUMN IF NOT EXISTS part_model_number TEXT`);
+      await client.query(`ALTER TABLE job_stock_deductions ADD COLUMN IF NOT EXISTS part_type TEXT`);
+
+      /**
+       * Backfill only the names, which exist to be copied.
+       *
+       * Model and type stay empty because they have never existed anywhere.
+       * Inventing them would be a guess wearing the clothes of a record.
+       */
+      await client.query(`
+        UPDATE job_stock_deductions d
+        SET part_name = i.name
+        FROM inventory_items i
+        WHERE d.inventory_item_id = i.id
+          AND d.part_name IS NULL
+      `);
     },
   },
 ];

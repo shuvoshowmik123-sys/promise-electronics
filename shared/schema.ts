@@ -339,6 +339,15 @@ export const jobTickets = pgTable("job_tickets", {
   slaDeadline: timestamp("sla_deadline"), // System-calculated corporate strict SLA
   notes: text("notes"),
   receivedAccessories: text("received_accessories"),
+  /**
+   * When somebody answered "which parts did this use", including "none".
+   *
+   * Set either by declaring parts or by tapping "Nothing was used". Without it
+   * an honest empty answer and an unanswered job are indistinguishable, which
+   * is why 2,121 jobs carry 5 declarations and repair profit reads high.
+   */
+  partsDeclaredAt: timestamp("parts_declared_at"),
+  partsDeclaredBy: text("parts_declared_by"),
   aiDiagnosis: jsonb("ai_diagnosis"),
   estimatedCost: real("estimated_cost"),
   assignedTechnicianId: text("assigned_technician_id"), // FK to users.id
@@ -686,6 +695,23 @@ export const inventoryItems = pgTable("inventory_items", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   category: text("category").notNull(),
+  /**
+   * Which part this actually is — "TX-43LB5000-PANEL", not "43 inch panel".
+   *
+   * Panels and motherboards are not interchangeable by size, so a name and a
+   * category cannot identify one. Without this a part cannot be matched to a
+   * request, a warranty claim cannot name what was fitted, and the same physical
+   * part typed differently on two days counts as two.
+   */
+  modelNumber: text("model_number"),
+  /**
+   * What the thing is in repair terms: Panel, Motherboard, Android voice-control
+   * motherboard, Backlight, Power board.
+   *
+   * Separate from `category`, which groups stock for browsing. This is the
+   * vocabulary a technician and a supplier both use.
+   */
+  partType: text("part_type"),
   description: text("description"),
   itemType: text("item_type").notNull().default("product"),
   stock: integer("stock").notNull().default(0),
@@ -2410,6 +2436,31 @@ export const jobStockDeductions = pgTable("job_stock_deductions", {
   quantity: integer("quantity").notNull(),
   /** "job" | "pos" — which path took it. Shows who catches what. */
   source: text("source").notNull(),
+  /**
+   * What this part cost, frozen when it was fitted.
+   *
+   * inventory_items.avg_cost_price is a weighted average that moves with every
+   * purchase, so reading it live repriced finished repairs — June's profit
+   * changing because of an August purchase. Snapshotting matches what this
+   * table already does for warranty days.
+   *
+   * NULL means the cost was never known, which is not the same as free.
+   */
+  unitCost: real("unit_cost"),
+  /**
+   * What was fitted, in the words that were true that day.
+   *
+   * Snapshotted rather than joined: the catalogue row can be renamed,
+   * re-modelled or deleted long before anyone asks what went into this
+   * television, and a warranty claim answered with a blank is no answer.
+   */
+  partName: text("part_name"),
+  partModelNumber: text("part_model_number"),
+  partType: text("part_type"),
+  /** "inventory" (snapshot) | "manual" (a Manager knew better). */
+  costSource: text("cost_source").notNull().default("inventory"),
+  costSetBy: text("cost_set_by"),
+  costSetAt: timestamp("cost_set_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (table) => {
   return {
