@@ -308,6 +308,20 @@ export const jobTickets = pgTable("job_tickets", {
   customerPhoneNormalized: text("customer_phone_normalized"),
   customerAddress: text("customer_address"),
   device: text("device"),
+  /**
+   * The television's make, chosen from Settings → tv_brands.
+   *
+   * Separate from `device`, which held whatever was typed into a box labelled
+   * "TV / device". Every screen that groups or searches by brand — the part
+   * demand board above all — needs one spelling, and free text never gives one.
+   */
+  brand: text("brand"),
+  /** Marks on the set as received: scratches, cracked bezel, broken stand. */
+  intakeCondition: text("intake_condition"),
+  /** "yes" | "no" | "sometimes" — text, because "sometimes" is the useful answer. */
+  powersOn: text("powers_on"),
+  /** Storage keys for photographs taken at intake. Read only with the job. */
+  intakePhotos: jsonb("intake_photos").notNull().default(sql`'[]'::jsonb`),
   tvSerialNumber: text("tv_serial_number"),
   modelNumber: text("model_number"),
   serialNumber: text("serial_number"),

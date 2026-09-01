@@ -71,7 +71,7 @@ const ADVISORY_LOCK_KEY = "promise_main_schema_migrate";
 const LOCK_WAIT_BUDGET_MS = parseInt(process.env.MAIN_MIGRATION_LOCK_WAIT_MS || "60000", 10);
 const LOCK_POLL_INTERVAL_MS = parseInt(process.env.MAIN_MIGRATION_LOCK_POLL_MS || "1000", 10);
 
-export const REQUIRED_MAIN_SCHEMA_VERSION = "2026_08_24_record_bin";
+export const REQUIRED_MAIN_SCHEMA_VERSION = "2026_09_02_job_intake_detail";
 
 export const MAIN_SCHEMA_MIGRATIONS: MainSchemaMigration[] = [
   {
@@ -2585,6 +2585,97 @@ export const MAIN_SCHEMA_MIGRATIONS: MainSchemaMigration[] = [
         WHERE restored_at IS NULL`);
       await client.query(`CREATE INDEX IF NOT EXISTS idx_record_bin_entity
         ON deleted_record_bin (entity_type, deleted_at DESC)`);
+    },
+  },
+  {
+    id: "2026_09_02_job_intake_detail",
+    description:
+      "job_tickets: brand, physical condition, powers-on and intake photos",
+    up: async (client) => {
+      /**
+       * The four things intake was never asked, and the arguments they settle.
+       *
+       * **brand.** There was no brand column at all. The form asked for
+       * "TV / device" as free text, so the one field every later screen groups
+       * and searches by arrived spelled however the person at the counter
+       * happened to type it — and a job could never be matched to a part
+       * request, which requires brand and takes it from a list.
+       *
+       * Nullable, with no default. A brand nobody recorded is unknown, and
+       * writing 'Unknown' into two thousand old rows would state something
+       * about them that nobody checked.
+       */
+      await client.query(`ALTER TABLE job_tickets ADD COLUMN IF NOT EXISTS brand TEXT`);
+
+      /**
+       * **intake_condition.** Scratches, a cracked bezel, a broken stand.
+       * Stored as text rather than an enum because this is a list of marks, not
+       * one state, and the shop will add to it — an enum would need a migration
+       * every time somebody thinks of a new kind of damage.
+       *
+       * This is what a delivery dispute is actually about. "That crack was not
+       * there before" is unanswerable today.
+       */
+      await client.query(`ALTER TABLE job_tickets ADD COLUMN IF NOT EXISTS intake_condition TEXT`);
+
+      /**
+       * **powers_on.** Yes, no, or sometimes — three taps at the counter that
+       * settle whether a fault arrived with the television or appeared in the
+       * workshop. Text rather than a boolean precisely because "sometimes" is
+       * the answer that matters most and a boolean cannot hold it.
+       */
+      await client.query(`ALTER TABLE job_tickets ADD COLUMN IF NOT EXISTS powers_on TEXT`);
+
+      /**
+       * **intake_photos.** Photographs taken as the set is received.
+       *
+       * jsonb holding an array of storage keys, not a separate table: they are
+       * only ever read with the job, never queried across jobs, and a table
+       * would add a join to every job read for no question anyone asks.
+       *
+       * Empty array rather than null so callers never branch on two kinds of
+       * nothing.
+       */
+      await client.query(
+        `ALTER TABLE job_tickets ADD COLUMN IF NOT EXISTS intake_photos JSONB NOT NULL DEFAULT '[]'::jsonb`,
+      );
+
+      /**
+       * Brand is indexed because it is about to become a filter and a grouping
+       * on a table with thousands of rows — the part-demand board groups on
+       * exactly this. Partial, since rows with no brand are never the answer to
+       * "show me the Samsungs".
+       */
+      await client.query(`CREATE INDEX IF NOT EXISTS idx_job_tickets_brand
+        ON job_tickets (brand)
+        WHERE brand IS NOT NULL`);
+
+      /**
+       * Backfill from the free-text device column, conservatively.
+       *
+       * Only where the whole field is exactly one known brand name, case
+       * insensitive and trimmed. "Samsung" becomes Samsung; "Samsung 43 inch
+       * LED" is left alone, because guessing that a string containing a brand
+       * name IS that brand is how "LG stand only, no panel" becomes an LG
+       * television. A wrong brand is worse than an absent one: absent is
+       * visibly missing, wrong is silently believed.
+       *
+       * The list is the shipped default. A shop that has edited Settings will
+       * have brands this does not cover, and those rows simply stay empty —
+       * which is correct, since this cannot know what was meant.
+       */
+      await client.query(`
+        UPDATE job_tickets
+        SET brand = matched.name
+        FROM (
+          SELECT unnest(ARRAY[
+            'Sony','Samsung','LG','Walton','Vision','Sharp','Panasonic','Haier'
+          ]) AS name
+        ) AS matched
+        WHERE job_tickets.brand IS NULL
+          AND job_tickets.device IS NOT NULL
+          AND lower(btrim(job_tickets.device)) = lower(matched.name)
+      `);
     },
   },
 ];
