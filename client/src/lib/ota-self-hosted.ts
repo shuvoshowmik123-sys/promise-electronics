@@ -77,17 +77,24 @@ export async function checkForWebBundleUpdate(): Promise<void> {
         if (!manifest.version || !manifest.url) return;
 
         /**
-         * What is running now.
+         * What is running now — measured against two things, not one.
          *
-         * A fresh install reports the built-in bundle, whose version is
-         * whatever was compiled in — usually "builtin". That never parses as a
-         * number, so it compares as 0.0.0 and the first real bundle always
-         * wins, which is the behaviour wanted.
+         * A fresh install reports the built-in bundle as "builtin", which parses
+         * as 0.0.0. Compared against that alone, an app installed minutes ago
+         * would immediately download the very bundle already compiled into it:
+         * four megabytes over a phone connection to arrive exactly where it
+         * started, on every new install.
+         *
+         * The native version is the honest floor. The APK and the zip are
+         * published from the same tag, so a 1.0.3 APK already contains the
+         * 1.0.3 web build and only 1.0.4 is worth fetching.
          */
         const current = await CapacitorUpdater.current();
-        const runningVersion = current?.bundle?.version ?? "0.0.0";
+        const bundleVersion = current?.bundle?.version ?? "0.0.0";
+        const nativeVersion = current?.native ?? "0.0.0";
 
-        if (!isNewer(manifest.version, runningVersion)) return;
+        if (!isNewer(manifest.version, bundleVersion)) return;
+        if (!isNewer(manifest.version, nativeVersion)) return;
 
         const bundle = await CapacitorUpdater.download({
             url: manifest.url,
