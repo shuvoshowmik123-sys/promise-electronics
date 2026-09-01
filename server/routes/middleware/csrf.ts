@@ -30,9 +30,25 @@ export function setCsrfToken(req: Request, res: Response, next: NextFunction) {
         req.session.csrfToken = crypto.randomBytes(32).toString('hex');
     }
 
+    /**
+     * The CSRF cookie must follow the same policy as the session it protects.
+     *
+     * This was pinned to "lax" while the session cookie is set from
+     * SESSION_COOKIE_SAMESITE, which the deployment has since set to "none" for
+     * the staff app — whose WebView origin is https://localhost and therefore
+     * cross-site to this API. The result was a split: the session cookie
+     * travelled on cross-site requests and the CSRF cookie did not, so the two
+     * halves of the same check disagreed about which session was in play.
+     *
+     * Tying them together means one rule, not two that can drift apart. Secure
+     * stays linked to it because sameSite "none" is invalid without it.
+     */
+    const cookieSameSite =
+        (process.env.SESSION_COOKIE_SAMESITE as 'lax' | 'none' | 'strict' | undefined) ?? 'lax';
+
     res.cookie('XSRF-TOKEN', req.session.csrfToken, {
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
+        secure: process.env.NODE_ENV === 'production' || cookieSameSite === 'none',
+        sameSite: cookieSameSite,
         httpOnly: false, // Essential: allows Frontend JS to read the token
         // Tracks the session lifetime. A CSRF cookie that dies first leaves the
         // customer apparently signed in while every mutation is rejected.

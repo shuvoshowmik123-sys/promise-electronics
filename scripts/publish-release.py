@@ -103,6 +103,11 @@ def main() -> None:
     parser.add_argument("tag", help="Release tag, e.g. v1.0.4")
     parser.add_argument("--token-file", type=Path, default=None)
     parser.add_argument("--notes", type=Path, default=None, help="File containing release notes")
+    parser.add_argument(
+        "--bundle-only",
+        action="store_true",
+        help="Publish the web bundle alone — for a fix that needs no new APK.",
+    )
     args = parser.parse_args()
 
     tag = args.tag if args.tag.startswith("v") else f"v{args.tag}"
@@ -116,8 +121,9 @@ def main() -> None:
     print(f"  authenticated as {me.get('login')}")
 
     # ── The files ─────────────────────────────────────────────────────────────
-    if not APK.exists():
+    if not args.bundle_only and not APK.exists():
         sys.exit(f"APK not found at {APK} — build it first.")
+
     bundle = find_bundle(version)
     if bundle is None:
         print("  ! no web bundle found — publishing the APK alone.")
@@ -127,7 +133,32 @@ def main() -> None:
             print(f"  ! bundle is {bundle.name}, not PromiseStaffWeb-{version}.zip")
             print("    Run `npm run app:bundle` after bumping the version.")
 
-    assets = [APK] + ([bundle] if bundle else [])
+    """
+    An APK is attached only when it is genuinely this version.
+
+    The first bundle-only release was published with the previous APK still
+    attached, because attaching it was unconditional. That is worse than
+    useless: the app compares its own version against the newest release, sees
+    a new tag, downloads a binary that reports the version it already runs, and
+    offers the same update for ever. Publishing nothing would have been better.
+
+    So the APK's own versionName is read out of the file and must match the tag.
+    """
+    include_apk = not args.bundle_only
+    if include_apk and APK.exists():
+        try:
+            import zipfile
+            manifest = zipfile.ZipFile(APK).read("AndroidManifest.xml")
+            if version.encode("utf-16-le") not in manifest:
+                print(f"  ! {APK.name} is not version {version} — leaving it off this release.")
+                print("    Rebuild the APK, or pass --bundle-only if that is deliberate.")
+                include_apk = False
+        except Exception as err:
+            print(f"  ! could not read the APK version ({err}); attaching it anyway.")
+
+    assets = ([APK] if include_apk else []) + ([bundle] if bundle else [])
+    if not assets:
+        sys.exit("Nothing to publish.")
     for a in assets:
         print(f"  {a.name}  ({a.stat().st_size:,} bytes)")
 
