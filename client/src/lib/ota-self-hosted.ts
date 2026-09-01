@@ -16,8 +16,7 @@
  * How it works: the newest web build is published as a zip beside the APK on
  * the release. The app asks this server which zip is newest, downloads it if it
  * is behind, and stages it for **next launch** rather than swapping it out
- * underneath whoever is mid-repair. Next time the app opens, it opens on the
- * fixed build.
+ * underneath whoever is mid-repair.
  *
  * The safety net matters more than the feature. A bundle that fails to start
  * would be unrecoverable — the app would be broken on every phone with no way
@@ -30,14 +29,44 @@
  * What still needs a real APK: permissions, plugins, the notification channel,
  * Gradle, anything native. Those are rare. Everything else can arrive by
  * itself.
+ *
+ * Everything here reports rather than just acts, because "is it updating?" was
+ * a fair question with no way to answer it from inside the app. The About
+ * screen is built on what this returns.
  */
 
 import { Capacitor } from "@capacitor/core";
+import { App as CapacitorApp } from "@capacitor/app";
 import { CapacitorUpdater } from "@capgo/capacitor-updater";
 
-type BundleManifest = {
-    version: string;
-    url: string;
+const LAST_CHECKED_KEY = "staff-app-last-update-check";
+
+export type UpdateOutcome =
+    /** Nothing newer is published. */
+    | { kind: "up-to-date" }
+    /** A newer web build was fetched and will be live next launch. */
+    | { kind: "staged"; version: string }
+    /** A newer build exists but only a new APK can deliver it. */
+    | { kind: "needs-apk"; version: string }
+    /** The check could not run — offline, or the server said nothing. */
+    | { kind: "unavailable"; reason: string }
+    /** Not the app. A browser is always on the newest build already. */
+    | { kind: "not-native" };
+
+export type UpdateStatus = {
+    /** The Android build installed, as the app reports itself. */
+    nativeVersion: string;
+    /** The web build actually running, which may be newer than the APK. */
+    bundleVersion: string;
+    /** Whether the running bundle came over the air or was compiled in. */
+    isBuiltin: boolean;
+    /** The newest APK published, if the server could be reached. */
+    latestApk: string | null;
+    /** The newest web bundle published. */
+    latestBundle: string | null;
+    /** A bundle already downloaded and waiting for the next launch. */
+    pending: string | null;
+    lastCheckedAt: number | null;
 };
 
 /**
@@ -46,7 +75,7 @@ type BundleManifest = {
  * "1.0.10" is newer than "1.0.9", which string comparison gets backwards — and
  * being wrong here either re-downloads a bundle forever or never ships the fix.
  */
-function isNewer(candidate: string, current: string): boolean {
+export function isNewer(candidate: string, current: string): boolean {
     const a = candidate.split(".").map((n) => parseInt(n, 10) || 0);
     const b = current.split(".").map((n) => parseInt(n, 10) || 0);
     for (let i = 0; i < Math.max(a.length, b.length); i++) {
@@ -57,62 +86,178 @@ function isNewer(candidate: string, current: string): boolean {
     return false;
 }
 
+function rememberCheck(): void {
+    try { localStorage.setItem(LAST_CHECKED_KEY, String(Date.now())); } catch { /* private mode */ }
+}
+
+function lastChecked(): number | null {
+    try {
+        const v = localStorage.getItem(LAST_CHECKED_KEY);
+        return v ? Number(v) || null : null;
+    } catch { return null; }
+}
+
+/** What the server is offering, both halves. */
+async function fetchPublished(): Promise<{ apk: string | null; bundle: { version: string; url: string } | null }> {
+    const [apkRes, bundleRes] = await Promise.allSettled([
+        fetch("/admin/api/app/latest", { headers: { Accept: "application/json" } }),
+        fetch("/admin/api/app/bundle", { headers: { Accept: "application/json" } }),
+    ]);
+
+    let apk: string | null = null;
+    if (apkRes.status === "fulfilled" && apkRes.value.ok) {
+        apk = ((await apkRes.value.json()) as { version?: string }).version ?? null;
+    }
+
+    let bundle: { version: string; url: string } | null = null;
+    // 204 means the release carries no zip — a real answer, not a failure.
+    if (bundleRes.status === "fulfilled" && bundleRes.value.ok && bundleRes.value.status !== 204) {
+        const d = (await bundleRes.value.json()) as { version?: string; url?: string };
+        if (d.version && d.url) bundle = { version: d.version, url: d.url };
+    }
+
+    return { apk, bundle };
+}
+
+/**
+ * Everything the About screen needs, without changing anything.
+ *
+ * Read-only on purpose. Someone opening a screen to see which version they are
+ * on should not have that act of looking start a four-megabyte download.
+ */
+export async function getUpdateStatus(): Promise<UpdateStatus> {
+    const empty: UpdateStatus = {
+        nativeVersion: "—",
+        bundleVersion: "—",
+        isBuiltin: true,
+        latestApk: null,
+        latestBundle: null,
+        pending: null,
+        lastCheckedAt: lastChecked(),
+    };
+
+    if (!Capacitor.isNativePlatform()) {
+        const published = await fetchPublished().catch(() => ({ apk: null, bundle: null }));
+        return { ...empty, latestApk: published.apk, latestBundle: published.bundle?.version ?? null };
+    }
+
+    try {
+        const [info, current, published] = await Promise.all([
+            CapacitorApp.getInfo(),
+            CapacitorUpdater.current(),
+            fetchPublished().catch(() => ({ apk: null, bundle: null })),
+        ]);
+
+        /**
+         * A bundle waiting for the next launch, if there is one.
+         *
+         * next() is not readable back directly, so the staged bundle is found
+         * among the downloaded ones: anything newer than what is running has
+         * been fetched and is waiting its turn.
+         */
+        let pending: string | null = null;
+        try {
+            const list = await CapacitorUpdater.list();
+            const running = current?.bundle?.version ?? "0.0.0";
+            const waiting = (list?.bundles ?? [])
+                .filter((b) => b.status === "pending" || b.status === "success")
+                .map((b) => b.version)
+                .filter((v) => v && isNewer(v, running));
+            pending = waiting.length ? waiting.sort((a, b) => (isNewer(a, b) ? -1 : 1))[0] : null;
+        } catch { /* listing is a convenience, not a requirement */ }
+
+        const bundleVersion = current?.bundle?.version ?? "builtin";
+
+        return {
+            nativeVersion: info.version,
+            bundleVersion,
+            isBuiltin: bundleVersion === "builtin" || bundleVersion === info.version,
+            latestApk: published.apk,
+            latestBundle: published.bundle?.version ?? null,
+            pending,
+            lastCheckedAt: lastChecked(),
+        };
+    } catch {
+        return empty;
+    }
+}
+
 /**
  * Fetch, stage, and get out of the way.
  *
- * Everything here is best effort and silent. An update check is never worth an
- * error message to someone holding a phone in a repair shop: if it fails, they
- * keep the build they have and it tries again next launch.
+ * Called on launch — where it is silent, because an update check is never worth
+ * an error message to someone holding a phone in a repair shop — and from the
+ * About screen, where the returned outcome is shown.
  */
-export async function checkForWebBundleUpdate(): Promise<void> {
-    if (!Capacitor.isNativePlatform()) return;
+export async function checkForWebBundleUpdate(): Promise<UpdateOutcome> {
+    if (!Capacitor.isNativePlatform()) return { kind: "not-native" };
 
     try {
-        const res = await fetch("/admin/api/app/bundle", {
-            headers: { Accept: "application/json" },
-        });
-        if (!res.ok) return;
+        const { apk, bundle } = await fetchPublished();
+        rememberCheck();
 
-        const manifest = (await res.json()) as Partial<BundleManifest>;
-        if (!manifest.version || !manifest.url) return;
-
-        /**
-         * What is running now — measured against two things, not one.
-         *
-         * A fresh install reports the built-in bundle as "builtin", which parses
-         * as 0.0.0. Compared against that alone, an app installed minutes ago
-         * would immediately download the very bundle already compiled into it:
-         * four megabytes over a phone connection to arrive exactly where it
-         * started, on every new install.
-         *
-         * The native version is the honest floor. The APK and the zip are
-         * published from the same tag, so a 1.0.3 APK already contains the
-         * 1.0.3 web build and only 1.0.4 is worth fetching.
-         */
         const current = await CapacitorUpdater.current();
         const bundleVersion = current?.bundle?.version ?? "0.0.0";
-        const nativeVersion = current?.native ?? "0.0.0";
-
-        if (!isNewer(manifest.version, bundleVersion)) return;
-        if (!isNewer(manifest.version, nativeVersion)) return;
-
-        const bundle = await CapacitorUpdater.download({
-            url: manifest.url,
-            version: manifest.version,
-        });
-
         /**
-         * next(), not set().
+         * The native version is the honest floor.
          *
-         * set() swaps the running bundle immediately and reloads the WebView.
-         * Doing that to someone halfway through booking a repair throws away
-         * what they had typed, for a fix they did not ask for and cannot see.
-         * next() stages it for the next launch or the next time the app is
-         * backgrounded — by which point the interruption costs nothing.
+         * A fresh install reports the built-in bundle as "builtin", which parses
+         * as 0.0.0. Measured against that alone, an app installed minutes ago
+         * would download the very bundle already compiled into it — four
+         * megabytes to arrive exactly where it started, on every new install.
+         * The APK and the zip ship from the same tag, so a 1.0.3 APK already
+         * holds the 1.0.3 web build.
          */
-        await CapacitorUpdater.next({ id: bundle.id });
-        console.log("[OTA] staged web bundle", manifest.version, "for next launch");
+        const nativeVersion = current?.native ?? "0.0.0";
+        const floor = isNewer(bundleVersion, nativeVersion) ? bundleVersion : nativeVersion;
+
+        if (bundle && isNewer(bundle.version, floor)) {
+            const downloaded = await CapacitorUpdater.download({
+                url: bundle.url,
+                version: bundle.version,
+            });
+            /**
+             * next(), not set().
+             *
+             * set() swaps the running bundle immediately and reloads the
+             * WebView. Doing that to someone halfway through booking a repair
+             * throws away what they had typed, for a fix they did not ask for
+             * and cannot see. next() stages it for the next launch.
+             */
+            await CapacitorUpdater.next({ id: downloaded.id });
+            return { kind: "staged", version: bundle.version };
+        }
+
+        // No web bundle, but a newer APK — worth saying, because it is the one
+        // case that cannot fix itself and needs a person.
+        if (apk && isNewer(apk, nativeVersion)) {
+            return { kind: "needs-apk", version: apk };
+        }
+
+        if (!bundle && !apk) {
+            return { kind: "unavailable", reason: "Could not reach the update server." };
+        }
+
+        return { kind: "up-to-date" };
     } catch (err) {
-        console.warn("[OTA] bundle check skipped:", (err as Error)?.message || err);
+        return { kind: "unavailable", reason: (err as Error)?.message || "The check could not run." };
     }
+}
+
+/**
+ * Switch to a staged bundle now instead of waiting for the next launch.
+ *
+ * Reloads the app, so it is offered as a deliberate button and never done on
+ * anyone's behalf.
+ */
+export async function applyStagedUpdateNow(): Promise<void> {
+    if (!Capacitor.isNativePlatform()) return;
+    const list = await CapacitorUpdater.list();
+    const current = await CapacitorUpdater.current();
+    const running = current?.bundle?.version ?? "0.0.0";
+    const target = (list?.bundles ?? [])
+        .filter((b) => b.version && isNewer(b.version, running))
+        .sort((a, b) => (isNewer(a.version, b.version) ? -1 : 1))[0];
+    if (!target) return;
+    await CapacitorUpdater.set({ id: target.id });
 }

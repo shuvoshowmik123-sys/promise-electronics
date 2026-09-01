@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { Search, ChevronRight, LogOut, UserCog, Smartphone } from "lucide-react";
+import { Search, ChevronRight, LogOut, UserCog, Smartphone, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type NavItem = { label: string; id: string; icon: any; color?: string };
@@ -138,6 +138,14 @@ export function MobileMoreMenu({
                     className="w-full h-13 py-3.5 rounded-2xl border border-slate-900/10 bg-slate-900 text-white font-bold flex items-center justify-center gap-2 active:scale-[0.98] transition-transform"
                 >
                     <Smartphone className="h-5 w-5" /> Get the Android app
+                </a>
+
+                {/* Version, update state, and a manual check. */}
+                <a
+                    href="/admin/about-app"
+                    className="w-full h-13 py-3.5 rounded-2xl border border-slate-200 bg-white text-slate-700 font-bold flex items-center justify-center gap-2 active:scale-[0.98] transition-transform"
+                >
+                    <Info className="h-5 w-5" /> About &amp; updates
                 </a>
 
                 {/* Logout */}

@@ -20,6 +20,9 @@ const StaffSetupPage = lazy(() => import("@/pages/admin/staff-setup"));
 // Where the Android app is handed out (public — see below)
 const GetAppPage = lazy(() => import("@/pages/admin/get-app"));
 
+// Versions, update state, and a manual check — see about-app.tsx
+const AboutAppPage = lazy(() => import("@/pages/admin/about-app"));
+
 // TEMPORARY: push connection test bench. Delete with server/routes/push-test.routes.ts.
 const PushTestPage = lazy(() => import("@/pages/admin/push-test"));
 
@@ -90,6 +93,23 @@ export function AdminRouter() {
         return (
             <Suspense fallback={<AdminContentSkeleton />}>
                 <GetAppPage />
+            </Suspense>
+        );
+    }
+
+    /**
+     * About the app: which version is installed, which is published, and
+     * whether an update is waiting.
+     *
+     * Beside get-app rather than inside the panel shell, and reachable while
+     * signed out for the same reason: someone whose app is misbehaving needs to
+     * read its version, and being unable to sign in is one of the ways an app
+     * misbehaves.
+     */
+    if (location.startsWith("/admin/about-app")) {
+        return (
+            <Suspense fallback={<AdminContentSkeleton />}>
+                <AboutAppPage />
             </Suspense>
         );
     }
