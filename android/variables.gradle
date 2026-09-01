@@ -1,8 +1,26 @@
 ext {
-    // Android 10. Below this the WebView is old enough that the admin UI
-    // needs polyfills nobody is maintaining, and the phones in question are
-    // too slow to be worth supporting anyway.
-    minSdkVersion = 29
+    /*
+     * Android 9.
+     *
+     * This was 29 — Android 10 — on the reasoning that below it the WebView is
+     * old enough to need polyfills nobody maintains. Android simply refuses to
+     * install on anything older, which is what a staff phone on Android 9 hit:
+     * not a crash, not a blank screen, just "app not installed" and no reason
+     * given.
+     *
+     * That reasoning has since weakened on both counts. The WebView updates
+     * through the Play Store independently of the OS, so an Android 9 phone
+     * that has had updates runs a current one. And the thing that actually
+     * broke on old WebViews here — Tailwind's oklch() colours, which rendered
+     * the panel colourless — already has a fallback compiled in by the
+     * oklabFunction plugin in vite.config.ts.
+     *
+     * So the floor buys nothing now except excluding phones people are using.
+     * A neglected device with a genuinely ancient WebView may still render
+     * parts of the panel poorly; that is visible in seconds and affects that
+     * phone alone, which is a better trade than refusing to install.
+     */
+    minSdkVersion = 28
     compileSdkVersion = 36
     targetSdkVersion = 36
     androidxActivityVersion = '1.11.0'

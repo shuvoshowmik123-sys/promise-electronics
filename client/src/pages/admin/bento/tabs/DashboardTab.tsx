@@ -2,7 +2,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { createPortal } from "react-dom";
 import {
     Activity, Package, DollarSign, Users, Clock, AlertCircle,
-    TrendingUp, CheckCircle2, ChevronRight, X, ShoppingCart, ChevronDown, RefreshCw
+    TrendingUp, CheckCircle2, ChevronRight, X, ShoppingCart, ChevronDown, RefreshCw, ShieldAlert
 } from "lucide-react";
 import {
     AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell
@@ -31,6 +31,38 @@ const cardMeta: Record<string, { title: string; icon: React.ReactNode; gradient:
 
 interface DashboardTabProps {
     onNavigate?: (tab: string, searchQuery?: string) => void;
+}
+
+/**
+ * Refused, not disconnected.
+ *
+ * A dashboard that will not load because this account lacks the permission is
+ * not a network problem, and telling someone it is sends them to retry a button
+ * that can never work. A Manager sat on "Dashboard is reconnecting" indefinitely
+ * because of this: the request was answering 403 immediately, every time, and
+ * the screen described it as a slow connection.
+ *
+ * The cause is usually an edit rather than a missing role. Stored permissions
+ * REPLACE the role preset instead of merging with it, so editing a user to add
+ * one permission silently drops every preset key the editor did not resubmit —
+ * dashboard.view among them. Nothing fails at save time; it surfaces here,
+ * later, as a screen that never loads.
+ */
+function DashboardNotPermitted() {
+    return (
+        <div className="flex min-h-[260px] items-center justify-center px-4">
+            <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 text-center shadow-sm">
+                <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-500">
+                    <ShieldAlert className="h-5 w-5" />
+                </div>
+                <h3 className="text-sm font-black text-slate-900">Dashboard is not enabled for this account</h3>
+                <p className="mt-1 text-xs font-medium leading-5 text-slate-600">
+                    This is a permission, not a connection — retrying will not help. Ask a Super Admin to
+                    open Settings → Users, edit this account, and tick <span className="font-bold">Dashboard</span>.
+                </p>
+            </div>
+        </div>
+    );
 }
 
 function SoftDashboardUnavailable({ onRetry, isRetrying }: { onRetry: () => void; isRetrying: boolean }) {
@@ -89,7 +121,7 @@ export default function DashboardTab({ onNavigate }: DashboardTabProps) {
         onNavigate?.(tab, searchQuery);
     };
 
-    const { data: dashboardData, isLoading, isError, isFetching, refetch } = useQuery<AdminAggregatedDashboard>({
+    const { data: dashboardData, isLoading, isError, error, isFetching, refetch } = useQuery<AdminAggregatedDashboard>({
         queryKey: ["dashboardStats", "aggregated"],
         queryFn: async () => {
             const fresh = await adminAuthApi.getAggregatedDashboard();
@@ -105,6 +137,15 @@ export default function DashboardTab({ onNavigate }: DashboardTabProps) {
 
     const data = dashboardData || getDashboardSnapshot();
 
+    /**
+     * A refusal is checked before the "no data" case, and before the retry
+     * screen, because it is the one failure retrying cannot mend.
+     */
+    const forbidden =
+        (error as { statusCode?: number } | null)?.statusCode === 403 ||
+        /insufficient permissions|access denied/i.test((error as Error | null)?.message ?? "");
+
+    if (forbidden) return <DashboardNotPermitted />;
     if (isLoading && !data) return <DashboardSkeleton />;
     if (!data) return <SoftDashboardUnavailable onRetry={() => refetch()} isRetrying={isFetching} />;
     const refreshNotice = isError ? <SoftDashboardRefreshNotice onRetry={() => refetch()} isRetrying={isFetching} /> : null;
