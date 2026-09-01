@@ -38,6 +38,8 @@ import { ReminderBell } from "@/components/admin/ReminderBell";
 import { TeamChatPanel } from "@/components/admin/TeamChatPanel";
 import { AdminPwaInstallPrompt } from "@/components/admin/AdminPwaInstallPrompt";
 import { AdminPushRegistrar } from "@/components/admin/AdminPushRegistrar";
+// TEMPORARY: answers connection-test pings. Delete with the test bench.
+import { PushConnectionResponder } from "@/components/admin/PushConnectionResponder";
 import { AppUpdatePrompt } from "@/components/admin/AppUpdatePrompt";
 import { DatabaseSyncStatus } from "@/components/admin/DatabaseSyncStatus";
 import {
@@ -1323,6 +1325,7 @@ export default function DesignConcept() {
                 <SyncConflictReview />
                 <TeamChatPanel />
                 <AdminPushRegistrar />
+                <PushConnectionResponder />
                 <AppUpdatePrompt />
                 <AdminPwaInstallPrompt />
             </div>

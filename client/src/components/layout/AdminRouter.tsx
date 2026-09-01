@@ -20,6 +20,9 @@ const StaffSetupPage = lazy(() => import("@/pages/admin/staff-setup"));
 // Where the Android app is handed out (public — see below)
 const GetAppPage = lazy(() => import("@/pages/admin/get-app"));
 
+// TEMPORARY: push connection test bench. Delete with server/routes/push-test.routes.ts.
+const PushTestPage = lazy(() => import("@/pages/admin/push-test"));
+
 // Standalone Print Views (Not part of the Bento Dashboard Shell)
 const CorporateBillPrint = lazy(() => import("@/pages/admin/corporate-bill-print"));
 
@@ -146,6 +149,22 @@ export function AdminRouter() {
 
     // /admin/account is a canonical workspace path (design-concept account tab).
     // Do not redirect to hash — ROUTING-01A path parser reads it.
+
+    /**
+     * TEMPORARY: the push connection test bench.
+     *
+     * Standalone rather than a tab in the panel so that removing it later is
+     * deleting a file and a route, with nothing left behind in the shell's
+     * navigation. Super admin is enforced on the server as well; the check in
+     * the page only decides what is drawn.
+     */
+    if (location.startsWith("/admin/push-test")) {
+        return (
+            <Suspense fallback={<AdminContentSkeleton />}>
+                <PushTestPage />
+            </Suspense>
+        );
+    }
 
     // Super Admin Workbench Route
     if (location === "/admin/workbench") {
