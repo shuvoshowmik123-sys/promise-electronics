@@ -543,6 +543,14 @@ html[data-customer-lang="bn"] .customer-portal-shell .font-heading {
   @apply bg-muted-foreground/40;
 }
 
+/*
+ * The brand rail hides its scrollbar at every width, not just on mobile.
+ * It is a swipe surface with its own dot indicator; a scrollbar under it reads
+ * as a second, contradictory control.
+ */
+.brand-rail::-webkit-scrollbar { display: none; }
+.brand-rail { -ms-overflow-style: none; scrollbar-width: none; }
+
 /* Utility to hide scrollbar but keep functionality - Mobile Only */
 @media (max-width: 768px) {
 

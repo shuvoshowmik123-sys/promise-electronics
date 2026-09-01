@@ -53,7 +53,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { MobileBottomSheetFrame, MobileBottomSheetHandle } from "@/components/ui/mobile-bottom-sheet";
 import { useLocation } from "wouter";
 import { buildNavigateAdminTabPath } from "@/lib/admin-workspace-routing";
-import { readTvSizes } from "@shared/tv-options";
+import { readTvBrands, readTvSizes } from "@shared/tv-options";
 
 type JobGroupKey = "new" | "repairing" | "waiting-parts" | "decision" | "ready" | "delivered" | "all";
 
@@ -430,6 +430,8 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
      * while the customer side ended "75 inch+".
      */
     const tvInches = readTvSizes(settings as any);
+    // Same source as the sizes, so Settings governs both pickers.
+    const tvBrands = readTvBrands(settings as any);
     const notificationTone = (settings.find(s => s.key === "notification_tone")?.value as NotificationTone) || "default";
     const selectedJobGroup = JOB_GROUPS.find((group) => group.key === jobGroupFilter);
 
@@ -1381,6 +1383,7 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
                     onClose={() => setIsCreateDrawerOpen(false)}
                     technicianUsers={technicianUsers}
                     tvInches={tvInches}
+                    tvBrands={tvBrands}
                     canAssignTechnician={canAssignTechnician}
                     lookupFailed={usersLookupError}
                 />

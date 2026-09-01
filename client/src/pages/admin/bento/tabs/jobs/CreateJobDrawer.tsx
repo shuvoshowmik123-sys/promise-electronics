@@ -6,6 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { PhoneInput } from "@/components/ui/phone-input";
+import { BrandRail } from "@/components/admin/BrandRail";
+import { DEFAULT_TV_BRANDS } from "@shared/tv-options";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
     ArrowLeft, ArrowRight, Building2, CheckCircle2, Cpu, Layers, Loader2,
@@ -45,6 +47,8 @@ interface CreateJobDrawerProps {
     onClose: () => void;
     technicianUsers: { id: string; name: string; role: string; skills?: string | null }[];
     tvInches: string[];
+    /** Settings → tv_brands. Falls back to the shared default when unset. */
+    tvBrands?: string[];
     canAssignTechnician?: boolean;
     lookupFailed?: boolean;
 }
@@ -88,6 +92,7 @@ export function CreateJobDrawer({
     onClose,
     technicianUsers,
     tvInches,
+    tvBrands,
     canAssignTechnician = false,
     lookupFailed = false,
 }: CreateJobDrawerProps) {
@@ -105,6 +110,18 @@ export function CreateJobDrawer({
     const [customerScreenSize, setCustomerScreenSize] = useState("");
     const [missingParts, setMissingParts] = useState<string[]>([]);
     const [accessories, setAccessories] = useState<string[]>([]);
+
+    /**
+     * The brand list, from Settings, with the shared default behind it.
+     *
+     * There were three brand lists in this codebase and they disagreed: the
+     * settings list, a longer hardcoded one in constants, and a third inside
+     * the challan screen offering Philips, Dell and HP while omitting Vision
+     * and Haier. The same television was recorded under different spellings
+     * depending on which screen took it in, and every report that groups by
+     * brand split across them. This reads the settings list only.
+     */
+    const brandOptions = tvBrands && tvBrands.length ? tvBrands : [...DEFAULT_TV_BRANDS];
     const [priority, setPriority] = useState<(typeof PRIORITIES)[number]>("Medium");
     const [assignedTechnicianId, setAssignedTechnicianId] = useState<string | undefined>();
     const [assignedTechnicianName, setAssignedTechnicianName] = useState("Unassigned");
@@ -282,7 +299,16 @@ export function CreateJobDrawer({
     const currentStepMessage = useMemo(() => {
         if (step === 0) return "";
         if (lane === "customer" && step === 1 && !customerName.trim()) return "Enter or select a customer.";
-        if (lane === "customer" && step === 2 && (!customerDevice.trim() || !customerIssue.trim())) return "Enter the TV/device and the reported problem.";
+        /*
+         * A phone number is either complete or useless. Half a number cannot be
+         * called, cannot be matched to an existing customer, and is discovered
+         * to be wrong only when someone tries to tell them their TV is ready.
+         * Blank stays allowed — a walk-in without a phone is a real customer.
+         */
+        if (lane === "customer" && step === 1 && customerPhone.trim() && customerPhone.trim().length !== 10) {
+            return "The phone number needs all 10 digits after +880.";
+        }
+        if (lane === "customer" && step === 2 && (!customerDevice.trim() || !customerIssue.trim())) return "Choose the brand and enter the reported problem.";
         if (lane === "technician" && step === 1) {
             if (creatingParty && (!newPartyName.trim() || newPartyPhone.trim().length < 10)) return "Enter the shop name and phone.";
             if (!creatingParty && !selectedParty) return "Select an existing shop or create one.";
@@ -368,7 +394,19 @@ export function CreateJobDrawer({
 
                         {lane === "customer" && step === 2 && <section className="space-y-4">
                             <SectionTitle icon={<Monitor className="h-4 w-4" />} title="Full TV intake" copy="Customer jobs in this flow are always a complete TV." />
-                            <div className="grid gap-4 sm:grid-cols-2"><Field label="TV / device *"><Input value={customerDevice} onChange={(event) => setCustomerDevice(event.target.value)} placeholder="e.g. 50 inch LED TV" /></Field><Field label="Model number"><Input value={customerModel} onChange={(event) => setCustomerModel(event.target.value)} placeholder="Model number" /></Field></div>
+                            {/*
+                              * Brand, chosen from the shop's own list.
+                              *
+                              * This was a free-text box labelled "TV / device"
+                              * with the hint "e.g. 50 inch LED TV", so the brand
+                              * — the one thing every later screen groups and
+                              * searches by — arrived spelled however the person
+                              * at the counter happened to type it. This shop
+                              * repairs televisions; "device" was never the
+                              * question being asked.
+                              */}
+                            <BrandRail brands={brandOptions} value={customerDevice} onChange={setCustomerDevice} />
+                            <Field label="Model number"><Input value={customerModel} onChange={(event) => setCustomerModel(event.target.value)} placeholder="Model number" /></Field>
                             <div className="grid gap-4 sm:grid-cols-2"><Field label="Serial number"><Input value={customerSerial} onChange={(event) => setCustomerSerial(event.target.value)} placeholder="Optional serial" /></Field><Field label="Screen size"><Input value={customerScreenSize} onChange={(event) => setCustomerScreenSize(event.target.value)} placeholder="e.g. 43" list="customer-screen-sizes" /><datalist id="customer-screen-sizes">{tvInches.map((size) => <option key={size} value={size} />)}</datalist></Field></div>
                             <Field label="Reported problem *"><Textarea value={customerIssue} onChange={(event) => setCustomerIssue(event.target.value)} placeholder="What is wrong with the TV?" /></Field>
                             <ToggleGroup title="Missing parts" items={MISSING_PARTS_LIST} selected={missingParts} onChange={setMissingParts} />
