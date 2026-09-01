@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { BrandRail } from "@/components/admin/BrandRail";
+import { cn } from "@/lib/utils";
 import { DEFAULT_TV_BRANDS } from "@shared/tv-options";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
@@ -57,6 +58,22 @@ const CUSTOMER_STEPS = ["Choose lane", "Customer", "Full TV", "Review"];
 const TECHNICIAN_STEPS = ["Choose lane", "Shop", "Units", "Review"];
 const B2B_STEPS = ["Choose lane", "Account", "Units", "Review"];
 const ACCESSORIES = ["Remote", "Stand", "Screws", "Wall Mount", "AC Cord", "Adapter"];
+
+/**
+ * Marks on the set as it is received.
+ *
+ * "Clean" is first and is a real answer, not the absence of one. Without it,
+ * a set with no damage looks identical to a set nobody examined, and the
+ * difference between those two is the whole point of recording this.
+ */
+const CONDITIONS = ["Clean", "Scratches", "Cracked bezel", "Broken stand", "Water mark", "Dented"];
+
+/** Three answers, because "sometimes" is the one that later arguments turn on. */
+const POWER_STATES = [
+    { value: "yes", label: "Yes" },
+    { value: "no", label: "No" },
+    { value: "sometimes", label: "Sometimes" },
+];
 const PRIORITIES = ["Low", "Medium", "High", "Critical"] as const;
 const TICKET_OPTIONS: { value: TicketType; label: string; icon: typeof Monitor }[] = [
     { value: "full_device", label: "Full TV", icon: Monitor },
@@ -110,6 +127,8 @@ export function CreateJobDrawer({
     const [customerScreenSize, setCustomerScreenSize] = useState("");
     const [missingParts, setMissingParts] = useState<string[]>([]);
     const [accessories, setAccessories] = useState<string[]>([]);
+    const [conditions, setConditions] = useState<string[]>([]);
+    const [powersOn, setPowersOn] = useState<string>("");
 
     /**
      * The brand list, from Settings, with the shared default behind it.
@@ -204,6 +223,8 @@ export function CreateJobDrawer({
         setNewPartyAddress("");
         setAccountSearch("");
         setSelectedAccount(null);
+        setConditions([]);
+        setPowersOn("");
         setUnits([emptyUnit()]);
         setDuplicateSignals(null);
     }, [isOpen]);
@@ -213,7 +234,17 @@ export function CreateJobDrawer({
             customer: customerName.trim(),
             customerPhone: customerPhone.trim() || undefined,
             customerAddress: customerAddress.trim() || undefined,
+            /**
+             * device and brand both carry the make, for now.
+             *
+             * brand is the column everything new reads. device is still written
+             * because two thousand existing jobs, every search box and every
+             * printed ticket read it, and a field that silently stops being
+             * filled looks to all of them like the data was lost. It stops
+             * being written once those readers move across.
+             */
             device: customerDevice.trim(),
+            brand: customerDevice.trim() || undefined,
             modelNumber: customerModel.trim() || undefined,
             serialNumber: customerSerial.trim() || undefined,
             issue: customerIssue.trim(),
@@ -223,6 +254,8 @@ export function CreateJobDrawer({
             priority,
             missingParts: missingParts.length ? missingParts : undefined,
             receivedAccessories: accessories.length ? accessories.join(", ") : undefined,
+            intakeCondition: conditions.length ? conditions.join(", ") : undefined,
+            powersOn: powersOn || undefined,
             ...(canAssignTechnician && assignedTechnicianId ? { assignedTechnicianId } : {}),
         }),
         onSuccess: async (job) => {
@@ -409,6 +442,25 @@ export function CreateJobDrawer({
                             <Field label="Model number"><Input value={customerModel} onChange={(event) => setCustomerModel(event.target.value)} placeholder="Model number" /></Field>
                             <div className="grid gap-4 sm:grid-cols-2"><Field label="Serial number"><Input value={customerSerial} onChange={(event) => setCustomerSerial(event.target.value)} placeholder="Optional serial" /></Field><Field label="Screen size"><Input value={customerScreenSize} onChange={(event) => setCustomerScreenSize(event.target.value)} placeholder="e.g. 43" list="customer-screen-sizes" /><datalist id="customer-screen-sizes">{tvInches.map((size) => <option key={size} value={size} />)}</datalist></Field></div>
                             <Field label="Reported problem *"><Textarea value={customerIssue} onChange={(event) => setCustomerIssue(event.target.value)} placeholder="What is wrong with the TV?" /></Field>
+
+                            {/*
+                              * Does it power on, and what does it look like.
+                              *
+                              * Both asked here, at the counter, with the set in
+                              * front of whoever is typing — which is the only
+                              * moment either can be answered honestly. Asked
+                              * later they become someone's recollection, and a
+                              * recollection is exactly what a delivery argument
+                              * already consists of.
+                              */}
+                            <PowerPills value={powersOn} onChange={setPowersOn} />
+                            <ChipGroup
+                                label="Condition on arrival"
+                                items={CONDITIONS}
+                                selected={conditions}
+                                onChange={setConditions}
+                                hint="Mark what you can see now. This is what settles a dispute at delivery."
+                            />
                             <ToggleGroup title="Missing parts" items={MISSING_PARTS_LIST} selected={missingParts} onChange={setMissingParts} />
                             <ToggleGroup title="Received accessories" items={ACCESSORIES} selected={accessories} onChange={setAccessories} />
                         </section>}
@@ -687,6 +739,90 @@ function SelectedAccount({ account, onChange }: { account: B2bAccountCard; onCha
                 </div>
             </div>
             <Button type="button" variant="ghost" size="sm" onClick={onChange}>Change</Button>
+        </div>
+    );
+}
+
+/**
+ * Yes / No / Sometimes, as three equal pills.
+ *
+ * A checkbox cannot hold "sometimes", and "sometimes" is the answer that
+ * matters: an intermittent fault is the one a customer disputes was ever
+ * reported.
+ */
+function PowerPills({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+    return (
+        <div>
+            <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Powers on?</p>
+            <div className="flex">
+                {POWER_STATES.map((state) => {
+                    const active = value === state.value;
+                    return (
+                        <button
+                            key={state.value}
+                            type="button"
+                            // Tapping the chosen one again clears it: the honest
+                            // answer to "we did not check" is nothing, not a guess.
+                            onClick={() => onChange(active ? "" : state.value)}
+                            className={cn(
+                                // mr rather than a flex gap — Android 9 WebViews
+                                // below Chrome 84 ignore gap and stack these flush.
+                                "mr-2 h-11 flex-1 rounded-full border text-[13px] font-bold transition-all duration-200 active:scale-95",
+                                active
+                                    ? "border-slate-900 bg-slate-900 text-white shadow-md shadow-slate-900/20"
+                                    : "border-slate-200 bg-white text-slate-700",
+                                value && !active && "opacity-45",
+                            )}
+                        >
+                            {state.label}
+                        </button>
+                    );
+                })}
+            </div>
+        </div>
+    );
+}
+
+/** Multi-select chips in the same language as the brand rail. */
+function ChipGroup({
+    label,
+    items,
+    selected,
+    onChange,
+    hint,
+}: {
+    label: string;
+    items: readonly string[];
+    selected: string[];
+    onChange: (items: string[]) => void;
+    hint?: string;
+}) {
+    return (
+        <div>
+            <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">{label}</p>
+            <div className="flex flex-wrap">
+                {items.map((item) => {
+                    const active = selected.includes(item);
+                    return (
+                        <button
+                            key={item}
+                            type="button"
+                            onClick={() =>
+                                onChange(active ? selected.filter((v) => v !== item) : [...selected, item])
+                            }
+                            className={cn(
+                                "mb-2 mr-2 h-10 rounded-full border px-4 text-[13px] font-semibold transition-all duration-200 active:scale-95",
+                                active
+                                    ? "border-slate-900 bg-slate-900 text-white"
+                                    : "border-slate-200 bg-white text-slate-700",
+                            )}
+                        >
+                            {item}
+                        </button>
+                    );
+                })}
+            </div>
+            {hint && <p className="text-[12px] leading-relaxed text-slate-500">{hint}</p>}
         </div>
     );
 }
