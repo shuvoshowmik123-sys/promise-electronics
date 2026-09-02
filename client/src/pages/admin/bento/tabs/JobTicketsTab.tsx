@@ -130,6 +130,25 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
         isSuperAdmin
         || (permissions as Record<string, boolean | undefined>)["jobs.manageWorkHolds"] === true;
 
+    /**
+     * The right to move a job to its next status.
+     *
+     * This is what the server has always checked — jobs.advanceStatus, plus
+     * assignment for technicians. The screens asked for canEdit instead, which
+     * is the right to rewrite the customer, the device and the money, and no
+     * technician preset grants it. So a technician holding exactly the
+     * permission the endpoint requires was shown "View Job" at four of the five
+     * steps of a repair.
+     *
+     * permissions.jobs is honoured for the accounts that predate the granular
+     * keys, and Super Admin for the obvious reason.
+     */
+    const canAdvanceJobs =
+        isSuperAdmin
+        || (permissions as Record<string, boolean | undefined>)["jobs.advanceStatus"] === true
+        || permissions.jobs === true
+        || hasPermission("canEdit");
+
     const [jobSearchQuery, setJobSearchQuery] = useState(initialSearchQuery || "");
     const [jobStatusFilter, setJobStatusFilter] = useState("all");
     const [jobPriorityFilter, setJobPriorityFilter] = useState("all");
@@ -1343,6 +1362,7 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
                                 onGenerateQr={(job) => { setSelectedJob(job); setQrDialogOpen(true); }}
                                 userRole={user?.role}
                                 canEdit={hasPermission("canEdit")}
+                                canAdvance={canAdvanceJobs}
                                 canReviewNg={canReviewNg}
                                 canReportNg={canReportNg}
                                 canMutateJob={(job) => !isJobReadOnlyForCurrentUser(job)}
@@ -1369,6 +1389,7 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
                                 onPrintTicket={handlePrintTicket}
                                 userRole={user?.role}
                                 canEdit={hasPermission("canEdit")}
+                                canAdvance={canAdvanceJobs}
                                 canReviewNg={canReviewNg}
                                 canReportNg={canReportNg}
                                 canMutateJob={(job) => !isJobReadOnlyForCurrentUser(job)}
@@ -1612,6 +1633,19 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
                     userRole={user?.role}
                     canEdit={
                         hasPermission("canEdit")
+                        && !!selectedJob
+                        && !isJobReadOnlyForCurrentUser(selectedJob)
+                    }
+                    /*
+                     * Assignment still decides it for a technician: an assist
+                     * technician, or anyone looking at somebody else's bench,
+                     * gets a read-only job. That rule lives in
+                     * isJobReadOnlyForCurrentUser and is unchanged — what
+                     * changes is that the assignee is no longer also required
+                     * to hold the right to rewrite the customer's details.
+                     */
+                    canAdvance={
+                        canAdvanceJobs
                         && !!selectedJob
                         && !isJobReadOnlyForCurrentUser(selectedJob)
                     }

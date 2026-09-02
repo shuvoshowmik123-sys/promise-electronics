@@ -64,6 +64,8 @@ interface JobTicketGridProps {
     onGenerateQr: (job: JobTicket) => void;
     userRole?: string;
     canEdit: boolean;
+    /** May advance the status. Not canEdit — see getPrimaryAction. */
+    canAdvance?: boolean;
     canReviewNg: boolean;
     canReportNg?: boolean;
     canMutateJob: (job: JobTicket) => boolean;
@@ -90,6 +92,7 @@ export function JobTicketGrid({
     onGenerateQr,
     userRole,
     canEdit,
+    canAdvance,
     canReviewNg,
     canReportNg = false,
     canMutateJob,
@@ -122,6 +125,7 @@ export function JobTicketGrid({
                         onPrintTicket={onPrintTicket}
                         userRole={userRole}
                         canEdit={canEdit && canMutateJob(job)}
+                        canAdvance={(canAdvance ?? canEdit) && canMutateJob(job)}
                         canReviewNg={canReviewNg}
                         canReportNg={canReportNg && canMutateJob(job)}
                         currencySymbol={currencySymbol}
@@ -140,9 +144,10 @@ export function JobTicketGrid({
             {jobs.map((job: any) => {
                 const isTechnician = userRole === "Technician";
                 const jobCanEdit = canEdit && canMutateJob(job);
+                const jobCanAdvance = (canAdvance ?? canEdit) && canMutateJob(job);
                 const jobCanReportNg = canReportNg && canMutateJob(job);
                 const showCustomerDetails = !isTechnician || jobCanEdit;
-                const primaryAction = getPrimaryAction(job, jobCanEdit, canReviewNg, jobCanReportNg);
+                const primaryAction = getPrimaryAction(job, jobCanEdit, canReviewNg, jobCanReportNg, jobCanAdvance);
                 const statusVisual = getStatusVisual(job.status);
                 const protectedStatus = ["NG Review Pending", "Awaiting Customer Decision"].includes(job.status || "");
                 const PrimaryActionIcon = primaryAction.Icon;

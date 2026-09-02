@@ -22,6 +22,12 @@ interface JobCardMobileProps {
     onPrintTicket: (job: JobTicket) => void;
     userRole?: string;
     canEdit: boolean;
+    /**
+     * May move this job to its next status. Separate from canEdit, which is the
+     * right to rewrite the customer, the device and the money — a technician
+     * has the first and must never have the second.
+     */
+    canAdvance?: boolean;
     canReviewNg: boolean;
     canReportNg?: boolean;
     currencySymbol: string;
@@ -57,6 +63,7 @@ export function JobCardMobile({
     onPrintTicket,
     userRole,
     canEdit,
+    canAdvance,
     canReviewNg,
     canReportNg = false,
     currencySymbol,
@@ -69,7 +76,7 @@ export function JobCardMobile({
     const isTechnician = userRole === "Technician";
     const showCustomerDetails = !isTechnician || canEdit;
     const status = getStatusVisual(job.status);
-    const action = getPrimaryAction(job, canEdit, canReviewNg, canReportNg);
+    const action = getPrimaryAction(job, canEdit, canReviewNg, canReportNg, canAdvance ?? canEdit);
     const ActionIcon = action.Icon;
     const actionLabel = action.label === "Assign Technician" ? "Assign" : action.label === "Print & Deliver" ? "Deliver" : action.label;
 

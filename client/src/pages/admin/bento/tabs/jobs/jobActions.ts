@@ -27,11 +27,35 @@ export interface PrimaryAction {
  * Shared by the desktop grid card, the mobile card, and the detail sheet
  * so the technician sees one consistent "next step" everywhere.
  */
+/**
+ * The one button this job is asking for, from whoever is looking at it.
+ *
+ * `canEdit` and `canAdvance` are separate because they were one flag doing two
+ * unrelated jobs — "may move this job along" and "may rewrite the customer,
+ * the device and the money". A technician needs the first and must never have
+ * the second, and a single flag cannot say that.
+ *
+ * The cost of conflating them was a repair flow with four of its five steps
+ * shut. A technician created through the current Add-User flow holds
+ * jobs.advanceStatus and no canEdit, so Start Repair, Parts Arrived, Record
+ * Final Test and Complete all rendered as "View Job" — while the server would
+ * have accepted every one of them, because it only ever checked assignment.
+ * Only "Report Result" worked, because someone had already noticed and added
+ * canReportNg as an escape hatch for that single step.
+ *
+ * Technicians created before the preset existed have blank permissions, fall
+ * back to legacy defaults that include canEdit, and work fine. That is why the
+ * fault looked random.
+ *
+ * `canAdvance` defaults to `canEdit` so every caller that has not been updated
+ * behaves exactly as before.
+ */
 export function getPrimaryAction(
     job: JobTicket,
     canEdit: boolean,
     canReviewNg = false,
     canReportNg = false,
+    canAdvance = canEdit,
 ): PrimaryAction {
     const status = job.status || "";
     const hasTechnician = Boolean(job.technician && job.technician !== "Unassigned");
@@ -42,22 +66,34 @@ export function getPrimaryAction(
     if (status === "Awaiting Customer Decision") {
         return { label: "View Workflow", type: "ngWorkflow", Icon: ClipboardCheck };
     }
-    // Report-only technicians may open result / NG workflow without generic canEdit
-    if (!canEdit && !canReportNg) return { label: "View Job", type: "view", Icon: Eye };
+    // Nothing to offer someone who can only look.
+    if (!canEdit && !canAdvance && !canReportNg) return { label: "View Job", type: "view", Icon: Eye };
+
+    /**
+     * Assigning somebody is editing the job, not advancing it. A technician
+     * moving their own work along should never be handed this.
+     */
     if (canEdit && !hasTechnician && !["Delivered", "Completed", "Cancelled", "Abandoned", "Forfeited"].includes(status)) {
         return { label: "Assign Technician", type: "edit", Icon: UserCheck };
     }
-    if (status === "Pending" && canEdit) return { label: "Start Repair", type: "advance", Icon: Play };
-    if (["Diagnosing", "In Progress", "On Workbench"].includes(status) && (canEdit || canReportNg)) {
+
+    // Each step of the repair asks only for the right to advance it.
+    if (status === "Pending" && canAdvance) return { label: "Start Repair", type: "advance", Icon: Play };
+    if (["Diagnosing", "In Progress", "On Workbench"].includes(status) && (canAdvance || canReportNg)) {
         return { label: "Report Result", type: "advance", Icon: CheckCircle2 };
     }
-    if (["Pending Parts", "Waiting on Parts"].includes(status) && canEdit) {
+    if (["Pending Parts", "Waiting on Parts"].includes(status) && canAdvance) {
         return { label: "Parts Arrived", type: "advance", Icon: PackageCheck };
     }
-    if (status === "Testing" && canEdit) {
+    if (status === "Testing" && canAdvance) {
         return { label: "Record Final Test", type: "advance", Icon: ClipboardCheck };
     }
-    if (status === "Ready" && canEdit) return { label: "Complete & Bill", type: "advance", Icon: CreditCard };
+    if (status === "Ready" && canAdvance) return { label: "Complete & Bill", type: "advance", Icon: CreditCard };
+
+    /**
+     * Delivery stays with canEdit. Handing the television back is a counter
+     * action with money and custody attached, not the last step of a repair.
+     */
     if (status === "Completed" && canEdit) return { label: "Print & Deliver", type: "print", Icon: Truck };
     return { label: "View Job", type: "view", Icon: Eye };
 }

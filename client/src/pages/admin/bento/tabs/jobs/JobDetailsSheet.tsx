@@ -41,6 +41,8 @@ interface JobDetailsSheetProps {
     viewMode: string;
     userRole?: string;
     canEdit: boolean;
+    /** May advance the status. See getPrimaryAction for why this is not canEdit. */
+    canAdvance?: boolean;
     currencySymbol: string;
     onEditJob: (job: any) => void;
     onPrintTicket: (job: any) => void;
@@ -113,6 +115,7 @@ export function JobDetailsSheet({
     viewMode,
     userRole,
     canEdit,
+    canAdvance,
     currencySymbol,
     onEditJob,
     onPrintTicket,
@@ -186,10 +189,16 @@ export function JobDetailsSheet({
             : (job.customer ? `${job.customer.split(" ")[0]} ***` : "Unknown"))
         : "";
 
-    const action = job ? getPrimaryAction(job, canEdit, canReviewNg, canReportNgProp) : null;
+    const action = job ? getPrimaryAction(job, canEdit, canReviewNg, canReportNgProp, canAdvance ?? canEdit) : null;
     const ActionIcon = action?.Icon;
     const protectedNgStatus = Boolean(job && ["NG Review Pending", "Awaiting Customer Decision"].includes(job.status || ""));
-    const canRecordWork = canEdit && !!onSaveWorkFeedback && !!job && ["In Progress", "On Workbench", "Testing", "Ready", "Pending Parts", "Waiting on Parts"].includes(job.status || "");
+    /**
+     * Writing up what was done is part of doing the work, not part of editing
+     * the job. It was gated on canEdit, so the technician who performed the
+     * repair could not record it while anyone who could not touch a screwdriver
+     * could.
+     */
+    const canRecordWork = (canAdvance ?? canEdit) && !!onSaveWorkFeedback && !!job && ["In Progress", "On Workbench", "Testing", "Ready", "Pending Parts", "Waiting on Parts"].includes(job.status || "");
     const canReportNg = canReportNgProp && !!onOpenNgWorkflow && !!job && ["Diagnosing", "In Progress", "On Workbench"].includes(job.status || "");
     const modelDisplay = job ? getJobModelDisplay(job) : null;
     const serialDisplay = job ? getJobSerialDisplay(job) : null;
