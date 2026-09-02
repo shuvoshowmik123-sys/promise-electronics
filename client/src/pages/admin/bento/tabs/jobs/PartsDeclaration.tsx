@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
     AlertCircle, Check, Minus, Package, PackagePlus, Plus, Search, Store, Trash2, X,
 } from "lucide-react";
@@ -142,6 +142,25 @@ export function PartsDeclaration({
     const [lines, setLines] = useState<ProductLineItem[]>(initialLines);
     const [query, setQuery] = useState("");
     const [sourcedOpen, setSourcedOpen] = useState(false);
+
+    /**
+     * Take the tab dock off screen while this is open.
+     *
+     * It used to be dodged instead — seven rem of dead padding under the action
+     * bar so the Save button cleared a dock floating above the dialog. On a
+     * phone that is a sixth of the screen spent on empty space, in the one
+     * place that needs every row it can show.
+     *
+     * The shell already listens for this; the attendance viewer and the mobile
+     * primitives use the same event. Restored on unmount so closing the dialog
+     * cannot leave the dock hidden.
+     */
+    useEffect(() => {
+        window.dispatchEvent(new CustomEvent("admin:mobile-chrome", { detail: { hidden: true } }));
+        return () => {
+            window.dispatchEvent(new CustomEvent("admin:mobile-chrome", { detail: { hidden: false } }));
+        };
+    }, []);
     const [sourcedName, setSourcedName] = useState("");
     const [sourcedPrice, setSourcedPrice] = useState("");
     const [sourcedNote, setSourcedNote] = useState("");
@@ -538,7 +557,18 @@ export function PartsDeclaration({
                 </div>
 
                 {/* Declared lines */}
-                <div className="flex min-h-0 flex-col border-t border-slate-200 bg-white md:w-[380px] md:shrink-0 md:rounded-2xl md:border md:p-3">
+                {/*
+                  * On a phone this sizes to its contents up to a ceiling, rather
+                  * than claiming half the screen.
+                  *
+                  * Both columns were flex-1, which is right side by side from md
+                  * and wrong stacked: an empty "Nothing added yet" panel took the
+                  * bottom half of the screen while the search results it is meant
+                  * to be filled from were squeezed into the top half. The list
+                  * that matters most at the counter had the least room precisely
+                  * when it was longest.
+                  */}
+                <div className="flex min-h-0 max-h-[45%] flex-none flex-col border-t border-slate-200 bg-white md:max-h-none md:w-[380px] md:flex-1 md:shrink-0 md:rounded-2xl md:border md:p-3">
                     <div className="flex flex-none items-center justify-between gap-2 px-3 pt-2 md:px-0 md:pt-0">
                         <span className={LABEL}>Declared ({lines.length})</span>
                         {incompleteCount > 0 && showErrors && (
@@ -563,8 +593,12 @@ export function PartsDeclaration({
                 </div>
             </div>
 
-            {/* Action bar. Clears the fixed tab dock on mobile. */}
-            <div className="flex-none border-t border-slate-200 bg-white px-3 pt-2.5 pb-[calc(7rem+env(safe-area-inset-bottom))] md:px-4 md:pb-3">
+            {/*
+              * Action bar. The dock is hidden while this is open, so this only
+              * has to clear the home indicator — not the seven rem it used to
+              * reserve for a dock floating above it.
+              */}
+            <div className="flex-none border-t border-slate-200 bg-white px-3 pt-2.5 pb-[calc(0.75rem+env(safe-area-inset-bottom))] md:px-4 md:pb-3">
                 <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
                         <span className={LABEL}>Total</span>
