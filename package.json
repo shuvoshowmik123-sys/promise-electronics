@@ -42,6 +42,8 @@
     "seed:policies": "node scripts/seed-policies.mjs",
     "app:sync": "npm run build && cap sync android && node scripts/apply-app-loader.mjs android/app/src/main/assets/public/index.html",
     "app:bundle": "node scripts/make-web-bundle.mjs",
+    "_comment_app:release": "Order matters: app:sync runs a build that wipes dist/, taking any bundle made before it. Bundle last.",
+    "app:release": "npm run app:sync && npm run app:bundle",
     "test:smoke": "node scripts/smoke-test.mjs",
     "app:open": "cap open android"
   },
