@@ -366,8 +366,16 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
      * opening this screen must never meet a crash caused by an older record.
      */
     const { data: partsInventoryRaw } = useQuery({
-        queryKey: ["inventory"],
-        queryFn: inventoryApi.getAll,
+        /*
+         * Its own key, not ["inventory"].
+         *
+         * Sharing the Inventory tab's cache entry would mean whichever screen
+         * loaded first decides what the other sees — a technician's cost-free
+         * catalogue served to the Inventory tab, or a 403 cached against the
+         * key the Inventory tab depends on.
+         */
+        queryKey: ["inventory", "parts-catalog"],
+        queryFn: inventoryApi.getPartsCatalog,
         enabled: canAccessJobs,
         retry: false,
     });

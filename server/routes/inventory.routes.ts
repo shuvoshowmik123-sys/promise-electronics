@@ -49,6 +49,49 @@ const dropPublicCatalogCache = (_req: Request, _res: Response, next: NextFunctio
 // ============================================
 
 /**
+ * GET /api/inventory/parts-catalog - the parts list, for whoever declares parts
+ *
+ * The full inventory route requires inventory.view, which a technician does not
+ * hold. That produced a contradiction rather than a refusal: a job cannot be
+ * completed until its parts are declared, and the screen that declares them
+ * reads the catalogue over an endpoint the declaring technician is forbidden.
+ * The 403 arrives as an empty array, so the screen says "No parts in stock yet"
+ * on a shop with a full shelf, and the technician is left with a mandatory step
+ * and nothing to pick from. A permission boundary that blocks a mandatory step
+ * is not a boundary, it is a deadlock.
+ *
+ * So the catalogue is separated from the ledger. This returns only what is
+ * needed to name and price a part on a job. avgCostPrice and preferredSupplier
+ * are deliberately not selected here — what a part cost us and who we buy it
+ * from stay with inventory.view, and are not inferable from a selling price.
+ *
+ * Registered above /api/inventory/:id so the literal path is not captured as an
+ * item id.
+ */
+router.get('/api/inventory/parts-catalog', requireAdminAuth, requireAnyGranularPermission(['inventory.view', 'jobs.view']), async (req: Request, res: Response) => {
+    try {
+        const all = await inventoryRepo.getAllInventoryItems();
+        res.json(
+            (all ?? [])
+                .filter((item: any) => (item.itemType ?? 'product') !== 'service')
+                .map((item: any) => ({
+                    id: item.id,
+                    name: item.name,
+                    category: item.category ?? null,
+                    modelNumber: item.modelNumber ?? null,
+                    partType: item.partType ?? null,
+                    price: item.price ?? 0,
+                    stock: item.stock ?? 0,
+                    isSerialized: Boolean(item.isSerialized),
+                })),
+        );
+    } catch (error) {
+        console.error('Error fetching parts catalog:', error);
+        res.status(500).json({ error: 'Failed to fetch parts catalog' });
+    }
+});
+
+/**
  * GET /api/inventory - Get all inventory items
  */
 router.get('/api/inventory', requireAdminAuth, requireGranularPermission('inventory.view'), async (req: Request, res: Response) => {

@@ -477,6 +477,15 @@ export const modulesApi = {
 // Inventory API
 export const inventoryApi = {
     getAll: () => fetchApi<InventoryItem[]>("/inventory"),
+    /**
+     * The parts list for the declaration screen.
+     *
+     * Separate from getAll because that one needs inventory.view and a
+     * technician has jobs.view — the declaration is mandatory for them, so it
+     * cannot read through a route their role is refused. Carries no cost or
+     * supplier columns.
+     */
+    getPartsCatalog: () => fetchApi<InventoryItem[]>("/inventory/parts-catalog"),
     getOne: (id: string) => fetchApi<InventoryItem>(`/inventory/${id}`),
     create: (data: InsertInventoryItem) =>
         fetchApi<InventoryItem>("/inventory", {

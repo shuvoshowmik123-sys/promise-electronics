@@ -483,12 +483,7 @@ export function PartsDeclaration({
                   * With results it grows again, which is when the room is
                   * actually wanted.
                   */}
-                <div
-                    className={cn(
-                        "flex min-h-0 min-w-0 flex-col md:flex-1 md:rounded-2xl md:border md:border-slate-200 md:bg-white md:p-3",
-                        results.length === 0 ? "flex-none" : "flex-1",
-                    )}
-                >
+                <div className="flex min-h-0 min-w-0 flex-1 flex-col md:rounded-2xl md:border md:border-slate-200 md:bg-white md:p-3">
                     <div className="flex-none px-3 pt-2 md:px-0 md:pt-0">
                         <div className="relative">
                             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -514,10 +509,26 @@ export function PartsDeclaration({
                         </div>
                     </div>
 
+                    {/*
+                      * Empty, this centres rather than stacking at the top.
+                      *
+                      * Two releases were spent moving the blank area around —
+                      * out of the middle, then below the declared list — on the
+                      * assumption that some flex rule would absorb it. None can.
+                      * A shop with no stock entered and nothing declared has
+                      * genuinely nothing to put on this screen, and the space
+                      * exists whatever the panels do with it.
+                      *
+                      * So it stops being a gap and becomes the margin around the
+                      * message: icon, explanation and the one available action,
+                      * centred in the room they already own. Empty on purpose
+                      * reads as an answer; empty at the bottom reads as a screen
+                      * that failed to finish loading.
+                      */}
                     <div
                         className={cn(
-                            "min-h-0 space-y-1.5 overflow-y-auto px-3 pt-2 pb-2 md:flex-1 md:px-0",
-                            results.length === 0 ? "flex-none" : "flex-1",
+                            "min-h-0 flex-1 space-y-1.5 overflow-y-auto px-3 pt-2 pb-2 md:px-0",
+                            results.length === 0 && "flex flex-col justify-center",
                         )}
                     >
                         {results.length === 0 ? (
@@ -650,7 +661,7 @@ export function PartsDeclaration({
                          * the room and this is capped, so a long parts list is
                          * never squeezed by an empty declared panel.
                          */
-                        results.length === 0 ? "flex-1" : "max-h-[45%] flex-none",
+                        "max-h-[45%] flex-none",
                     )}
                 >
                     <div className="flex flex-none items-center justify-between gap-2 px-3 pt-2 md:px-0 md:pt-0">
