@@ -143,6 +143,22 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
      * permissions.jobs is honoured for the accounts that predate the granular
      * keys, and Super Admin for the obvious reason.
      */
+    /**
+     * Who may send a job to the till.
+     *
+     * This was passed to every card unconditionally, so a technician saw
+     * "Bill at POS" on any billable job and tapping it sent them to a tab their
+     * role cannot open. Offering somebody a button that takes them somewhere
+     * they are not allowed to be is worse than not offering it: they read the
+     * refusal as the system being broken rather than as a boundary.
+     *
+     * hasPermission("pos") resolves the granular pos.* keys through the prefix
+     * fallback, so a Manager holding pos.sell qualifies without anyone having
+     * to list every key here.
+     */
+    const canBillAtPos =
+        isSuperAdmin || hasPermission("pos" as any);
+
     const canAdvanceJobs =
         isSuperAdmin
         || (permissions as Record<string, boolean | undefined>)["jobs.advanceStatus"] === true
@@ -156,7 +172,21 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
     const [showJobFilters, setShowJobFilters] = useState(false);
     const [isSearchFocused, setIsSearchFocused] = useState(false);
     const [jobPage, setJobPage] = useState(1);
-    const [jobGroupFilter, setJobGroupFilter] = useState<JobGroupKey>("new");
+    /**
+     * Everything, first and by default.
+     *
+     * It opened on "New" with "All" last in the row, which answers the wrong
+     * question for the person most often holding this screen. A technician
+     * opening Jobs wants to see their work — including what they finished
+     * today — and instead saw only what had not been started, with their
+     * completed jobs filed under a chip named "Ready" at the far end of a
+     * scrolling row. That is why finished work looked deleted: it was two
+     * decisions away and named after something else.
+     *
+     * "All" first also matches how the row is read. The leftmost chip is the
+     * one seen without scrolling, so it should be the one that hides nothing.
+     */
+    const [jobGroupFilter, setJobGroupFilter] = useState<JobGroupKey>("all");
     const [viewMode, setViewMode] = useState<"grid" | "list" | "kanban">("grid");
 
     const autoOpenedQueryRef = useRef<string | null>(null);
@@ -1283,6 +1313,20 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
                             </div>
 
                             <div className="flex gap-1.5 md:gap-2 overflow-x-auto pb-1 hide-scrollbar">
+                                <button
+                                    type="button"
+                                    onClick={() => setJobGroupFilter("all")}
+                                    className={cn(
+                                        "min-w-[58px] md:min-w-[104px] rounded-lg border px-2 md:px-3 py-1.5 md:py-2.5 text-left transition-all shadow-sm",
+                                        jobGroupFilter === "all" ? "border-slate-300 bg-slate-900 text-white" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                                    )}
+                                >
+                                    <span className="flex items-center justify-between gap-2 md:gap-3">
+                                        <span className="text-xs md:text-sm font-bold">All</span>
+                                        <span className="font-mono text-xs md:text-sm font-bold">{groupCounts.all}</span>
+                                    </span>
+                                    <span className="mt-1 hidden md:block text-[11px] font-medium opacity-75">Everything</span>
+                                </button>
                                 {JOB_GROUPS.map((group) => (
                                     <button
                                         key={group.key}
@@ -1303,20 +1347,6 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
                                         <span className="mt-1 hidden md:block text-[11px] font-medium opacity-75">{group.helper}</span>
                                     </button>
                                 ))}
-                                <button
-                                    type="button"
-                                    onClick={() => setJobGroupFilter("all")}
-                                    className={cn(
-                                        "min-w-[58px] md:min-w-[104px] rounded-lg border px-2 md:px-3 py-1.5 md:py-2.5 text-left transition-all shadow-sm",
-                                        jobGroupFilter === "all" ? "border-slate-300 bg-slate-900 text-white" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-                                    )}
-                                >
-                                    <span className="flex items-center justify-between gap-2 md:gap-3">
-                                        <span className="text-xs md:text-sm font-bold">All</span>
-                                        <span className="font-mono text-xs md:text-sm font-bold">{groupCounts.all}</span>
-                                    </span>
-                                    <span className="mt-1 hidden md:block text-[11px] font-medium opacity-75">Everything</span>
-                                </button>
                             </div>
 
                             <JobFilters
@@ -1368,7 +1398,7 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
                                 canMutateJob={(job) => !isJobReadOnlyForCurrentUser(job)}
                                 currencySymbol={getCurrencySymbol()}
                                 billableJobIds={billableJobIds}
-                                onBillAtPos={handleBillAtPos}
+                                onBillAtPos={canBillAtPos ? handleBillAtPos : undefined}
                                 needsPartsDeclaration={jobNeedsPartsDeclaration}
                                 onDeclareParts={(job) => {
                                     setSelectedJob(job);
