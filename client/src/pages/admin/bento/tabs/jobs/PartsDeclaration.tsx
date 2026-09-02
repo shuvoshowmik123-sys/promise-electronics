@@ -174,7 +174,6 @@ export function PartsDeclaration({
     }, []);
     const [sourcedName, setSourcedName] = useState("");
     const [sourcedPrice, setSourcedPrice] = useState("");
-    const [sourcedNote, setSourcedNote] = useState("");
     const [showErrors, setShowErrors] = useState(false);
     const searchRef = useRef<HTMLInputElement>(null);
 
@@ -237,12 +236,23 @@ export function PartsDeclaration({
             quantity: 1,
             unitPrice: price,
             source: "outsourced",
-            purchaseNote: sourcedNote.trim() || undefined,
+            /*
+             * No purchase note is written.
+             *
+             * The field that fed it invited a shop name - its placeholder was a
+             * market trader's - and productLines is stored on the job, so every
+             * declaration quietly built a record of where we buy. Who supplies a
+             * part is commercially confidential and has no bearing on the
+             * repair: the job needs the part named and priced, and nothing here
+             * reads a supplier for any other purpose.
+             *
+             * The field stays on the type because older jobs already carry one
+             * and must keep loading. Nothing writes it from this screen.
+             */
         }]);
         setSourcedOpen(false);
         setSourcedName("");
         setSourcedPrice("");
-        setSourcedNote("");
         setQuery("");
         searchRef.current?.focus();
     };
@@ -284,7 +294,6 @@ export function PartsDeclaration({
     const openSourcedForm = () => {
         setSourcedName(trimmedQuery);
         setSourcedPrice("");
-        setSourcedNote("");
         setSourcedOpen(true);
     };
 
@@ -550,8 +559,8 @@ export function PartsDeclaration({
                                     </p>
                                     <p className="text-[12px] font-medium text-slate-500 md:text-[10px]">
                                         {query.trim()
-                                            ? "If it was bought from a local vendor, add it as a sourced part."
-                                            : "Search to find a part, or add one bought from a local vendor."}
+                                            ? "Add it as a new part, with its name and price."
+                                            : "Search to find a part, or add one that is not in stock."}
                                     </p>
                                 </div>
                                 {sourcedOpen ? (
@@ -560,7 +569,7 @@ export function PartsDeclaration({
                                             <span className={cn("flex h-8 w-8 items-center justify-center rounded-xl border", toneClasses.violet)}>
                                                 <Store className="h-4 w-4" />
                                             </span>
-                                            <p className="text-[15px] font-bold text-slate-950 md:text-[13px]">Sourced part</p>
+                                            <p className="text-[15px] font-bold text-slate-950 md:text-[13px]">New part</p>
                                         </div>
                                         <div className="mt-2.5 space-y-2">
                                             <label className="block">
@@ -570,10 +579,6 @@ export function PartsDeclaration({
                                             <label className="block">
                                                 <span className={LABEL}>Unit price</span>
                                                 <input type="text" inputMode="decimal" value={sourcedPrice} onChange={(e) => setSourcedPrice(e.target.value)} placeholder="0" className={cn(INPUT, "mt-1")} />
-                                            </label>
-                                            <label className="block">
-                                                <span className={LABEL}>Note (optional)</span>
-                                                <input type="text" value={sourcedNote} onChange={(e) => setSourcedNote(e.target.value)} placeholder="e.g. Stadium Market vendor" className={cn(INPUT, "mt-1")} />
                                             </label>
                                         </div>
                                         <div className="mt-2.5 grid grid-cols-2 gap-2">
@@ -618,8 +623,8 @@ export function PartsDeclaration({
                                             <PackagePlus className="h-4 w-4 shrink-0 text-violet-700" />
                                             <span className="truncate text-[13px] font-bold text-violet-700">
                                                 {trimmedQuery
-                                                    ? `Add \u201c${trimmedQuery}\u201d as a sourced part`
-                                                    : "Add a part bought from a local vendor"}
+                                                    ? `Add \u201c${trimmedQuery}\u201d as a new part`
+                                                    : "Add a part that is not in stock"}
                                             </span>
                                         </span>
                                     </button>
