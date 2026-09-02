@@ -82,9 +82,49 @@ export function readPartTypes(settings: SettingRow[]): string[] {
  * produces invented data, which is worse than an admitted gap because nobody
  * can tell it apart from the truth later.
  */
-export function requiresModelNumber(partType: string | null | undefined): boolean {
+export function requiresModelNumber(
+    partType: string | null | undefined,
+    /**
+     * The shop's own answer, when it has given one.
+     *
+     * Omitted, this falls back to the shipped list - which is right for callers
+     * that genuinely have no Settings to read, and wrong as a permanent answer.
+     * A shop that adds "Soundbar board" decides for itself whether a model
+     * number identifies one; that judgement cannot live in this file.
+     */
+    modelCritical?: readonly string[],
+): boolean {
     if (!partType) return false;
-    return (MODEL_CRITICAL_PART_TYPES as readonly string[]).includes(partType);
+    const list = modelCritical ?? (MODEL_CRITICAL_PART_TYPES as readonly string[]);
+    return list.includes(partType);
+}
+
+/** Settings key for the types a model number identifies rather than describes. */
+export const MODEL_CRITICAL_KEY = "part_types_model_critical";
+
+/**
+ * Which types demand a model number, from Settings.
+ *
+ * Stored as its own list rather than as a flag on each type because the types
+ * themselves are a plain string list, and keeping one shape avoids a migration
+ * of a settings value that is edited by hand.
+ *
+ * An empty stored list is a real answer and is honoured - a shop may decide no
+ * part needs a model number - which is why this checks for the row rather than
+ * for a non-empty parse the way readPartTypes does.
+ */
+export function readModelCriticalPartTypes(settings: SettingRow[]): string[] {
+    const row = settings.find((s) => s.key === MODEL_CRITICAL_KEY);
+    if (row?.value) {
+        try {
+            const parsed = JSON.parse(row.value);
+            if (Array.isArray(parsed)) return parsed as string[];
+        } catch {
+            // Not JSON - fall through to the shipped list rather than to none,
+            // because "no part needs a model" is the more damaging default.
+        }
+    }
+    return [...MODEL_CRITICAL_PART_TYPES];
 }
 
 /** The one accepted way to say a part has no model number. */

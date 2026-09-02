@@ -99,6 +99,13 @@ const ALLOWED_SETTING_KEYS = [
      * before it starts.
      */
     'tv_parts',
+    // The repair vocabulary. Distinct from tv_parts above: that is the
+    // customer-facing list a service request is raised under, this is the
+    // word a technician declares a fitted part as.
+    // Deliberately NOT in PUBLIC_SETTING_KEYS below - how this shop names
+    // boards is internal, and the public site has no use for it.
+    'part_types',
+    'part_types_model_critical',
     'repair_price_matrix',
 
     // CMS / Home

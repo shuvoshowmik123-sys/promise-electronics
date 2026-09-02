@@ -486,6 +486,15 @@ export const inventoryApi = {
      * supplier columns.
      */
     getPartsCatalog: () => fetchApi<InventoryItem[]>("/inventory/parts-catalog"),
+    /**
+     * The two Settings rows the declaration screen needs.
+     *
+     * Separate from settingsApi.getAll for the same reason getPartsCatalog is
+     * separate from getAll: listing Settings needs a privilege a technician
+     * does not hold, and without this they silently get the shipped part types
+     * rather than the shop's own.
+     */
+    getPartVocabulary: () => fetchApi<{ key: string; value: string | null }[]>("/inventory/part-vocabulary"),
     getOne: (id: string) => fetchApi<InventoryItem>(`/inventory/${id}`),
     create: (data: InsertInventoryItem) =>
         fetchApi<InventoryItem>("/inventory", {

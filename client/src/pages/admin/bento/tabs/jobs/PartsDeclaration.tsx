@@ -84,6 +84,8 @@ export interface PartsDeclarationProps {
      * and so the caller decides what a reader who cannot fetch Settings sees.
      */
     partTypes: string[];
+    /** Which of those types a model number identifies, from Settings. */
+    modelCriticalTypes?: string[];
     /** What the customer was quoted, if anything has been recorded yet. */
     initialQuote?: number | null;
     /**
@@ -164,6 +166,7 @@ export function PartsDeclaration({
     inventory,
     isSaving,
     partTypes,
+    modelCriticalTypes,
     initialQuote,
     canSeeMargin = false,
     onSave,
@@ -276,7 +279,7 @@ export function PartsDeclaration({
      * no legible marking is a real answer, and refusing it only teaches people
      * to invent one.
      */
-    const sourcedModelNeeded = requiresModelNumber(sourcedType);
+    const sourcedModelNeeded = requiresModelNumber(sourcedType, modelCriticalTypes);
     const sourcedPriceValue = Number(sourcedPrice);
     const sourcedReady =
         Boolean(sourcedType)

@@ -55,7 +55,7 @@ import { MobileBottomSheetFrame, MobileBottomSheetHandle } from "@/components/ui
 import { useLocation } from "wouter";
 import { buildNavigateAdminTabPath } from "@/lib/admin-workspace-routing";
 import { readTvBrands, readTvSizes } from "@shared/tv-options";
-import { readPartTypes } from "@shared/part-types";
+import { readPartTypes, readModelCriticalPartTypes } from "@shared/part-types";
 
 type JobGroupKey = "new" | "repairing" | "waiting-parts" | "decision" | "ready" | "delivered" | "all";
 
@@ -392,7 +392,29 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
      * properly means the same treatment inventory just got - a narrow
      * read-only route - and is left as a decision rather than assumed.
      */
-    const partTypeOptions = useMemo(() => readPartTypes(settings as any), [settings]);
+    const { data: partVocabulary } = useQuery({
+        queryKey: ["inventory", "part-vocabulary"],
+        queryFn: inventoryApi.getPartVocabulary,
+        enabled: canAccessJobs,
+        retry: false,
+    });
+
+    /*
+     * The shop's vocabulary reaches everyone who declares a part.
+     *
+     * This read Settings directly, which a technician cannot list - so they got
+     * the shipped defaults while a manager on the same job got the shop's own
+     * types, and nothing on either screen said they were looking at different
+     * lists. The narrow route returns the two rows and nothing else.
+     */
+    const partTypeOptions = useMemo(
+        () => readPartTypes((partVocabulary ?? settings) as any),
+        [partVocabulary, settings],
+    );
+    const modelCriticalTypes = useMemo(
+        () => readModelCriticalPartTypes((partVocabulary ?? settings) as any),
+        [partVocabulary, settings],
+    );
 
     const partsInventory = useMemo(
         () => ((partsInventoryRaw as any[]) ?? [])
@@ -1801,6 +1823,7 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
                                 initialLines={parseProductLines((selectedJob as any).productLines)}
                                 inventory={partsInventory}
                                 partTypes={partTypeOptions}
+                                modelCriticalTypes={modelCriticalTypes}
                                 initialQuote={(selectedJob as any).estimatedCost ?? null}
                                 canSeeMargin={isSuperAdmin || user?.role === "Manager"}
                                 isSaving={savePartsMutation.isPending}

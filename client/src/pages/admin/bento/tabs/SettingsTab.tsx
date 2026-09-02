@@ -35,6 +35,7 @@ const BulkImportSection = lazy(() => import("./settings/BulkImportSection"));
 const OperationsSettingsPanel = lazy(() => import("./settings/OperationsSettingsPanel").then(m => ({ default: m.OperationsSettingsPanel })));
 const ServiceConfigEditor = lazy(() => import("./settings/ServiceConfigEditor").then(m => ({ default: m.ServiceConfigEditor })));
 import { TagListCard } from "./settings/TagListCard";
+import { PartTypesCard } from "./settings/PartTypesCard";
 import SystemIntegritySummary from "./settings/SystemIntegritySummary";
 import { canOpenServiceFeedbackWorkspace } from "@/lib/service-feedback-capabilities";
 const ServiceFeedbackSection = lazy(() => import("./settings/ServiceFeedbackSection"));
@@ -142,6 +143,18 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
     const [tvBrands, setTvBrands] = useState<string[]>([]);
     /** Parts a customer may ask us to source. Shop-edited, never hardcoded. */
     const [tvParts, setTvParts] = useState<string[]>([]);
+    /*
+     * The repair vocabulary, distinct from tvParts above.
+     *
+     * "TV Parts" is the customer-facing list a service request is raised
+     * under. This is the word a technician says to a supplier and declares a
+     * fitted part as. They were the same idea once and drifted, which is
+     * exactly the drift shared/part-types.ts was written to stop - so they stay
+     * separate keys with separate cards rather than one list doing both jobs
+     * badly.
+     */
+    const [partTypes, setPartTypes] = useState<string[]>([]);
+    const [partTypesModelCritical, setPartTypesModelCritical] = useState<string[]>([]);
     const [tvInches, setTvInches] = useState<string[]>([]); // Renamed from tvSizes to match prop
     const [commonSymptoms, setCommonSymptoms] = useState<string[]>([]);
     const [serviceFilterCategories, setServiceFilterCategories] = useState<string[]>([]);
@@ -362,6 +375,8 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                         case "shop_categories": setShopCategories(parse(val, [])); break;
                         case "tv_brands": setTvBrands(parse(val, [])); break;
                         case "tv_parts": setTvParts(parse(val, [])); break;
+                        case "part_types": setPartTypes(parse(val, [])); break;
+                        case "part_types_model_critical": setPartTypesModelCritical(parse(val, [])); break;
 
                         case "tv_sizes": setTvInches(parse(val, [])); break;
 
@@ -466,6 +481,8 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                 shop_categories: JSON.stringify(shopCategories),
                 tv_brands: JSON.stringify(tvBrands),
                 tv_parts: JSON.stringify(tvParts),
+                part_types: JSON.stringify(partTypes),
+                part_types_model_critical: JSON.stringify(partTypesModelCritical),
 
                 tv_sizes: JSON.stringify(tvInches),
 
@@ -2004,6 +2021,7 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                                         { value: "shop", label: "Shop" },
                                         { value: "brands", label: "Brands" },
                                         { value: "parts", label: "Parts" },
+                                        { value: "partTypes", label: "Part Types" },
                                         { value: "sizes", label: "Sizes" },
                                         { value: "symptoms", label: "Symptoms" },
                                         { value: "filters", label: "Filters" },
@@ -2038,6 +2056,27 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                                 )}
                                 {mobileCatalogTab === "parts" && (
                                     <TagListCard title="TV Parts" icon={<Wrench className="w-5 h-5 text-orange-500" />} items={tvParts} setItems={setTvParts} placeholder="e.g. Display, Backlight, Power board" accentColor="amber" />
+                                )}
+                                {/*
+                                  * Beside "Parts" and deliberately not merged
+                                  * with it.
+                                  *
+                                  * "TV Parts" is the customer-facing list a
+                                  * service request is raised under; this is what
+                                  * a technician declares a fitted part as and
+                                  * what is said to a supplier. They were one
+                                  * list once and drifted until the same board
+                                  * was recorded differently depending on the
+                                  * screen that took it in, which is what
+                                  * shared/part-types.ts was written to stop.
+                                  */}
+                                {mobileCatalogTab === "partTypes" && (
+                                    <PartTypesCard
+                                        types={partTypes}
+                                        setTypes={setPartTypes}
+                                        modelCritical={partTypesModelCritical}
+                                        setModelCritical={setPartTypesModelCritical}
+                                    />
                                 )}
                                 {mobileCatalogTab === "sizes" && (
                                     <TagListCard title="TV Sizes (Inches)" icon={<Ruler className="w-5 h-5 text-amber-500" />} items={tvInches} setItems={setTvInches} placeholder="e.g. 32, 43, 55" accentColor="amber" />

@@ -12,7 +12,7 @@
 
 import { Router, Request, Response, NextFunction } from 'express';
 import { storage } from '../storage.js';
-import { inventoryRepo, financeRepo } from '../repositories/index.js';
+import { inventoryRepo, financeRepo, settingsRepo } from '../repositories/index.js';
 import { insertInventoryItemSchema, insertProductSchema, insertLocalPurchaseSchema, insertWastageLogSchema, localPurchases, inventorySerials, purchaseOrderItems } from '../../shared/schema.js';
 import { requireAdminAuth, requirePermission, requireGranularPermission, requireAnyGranularPermission } from './middleware/auth.js';
 import { auditLogger } from '../utils/auditLogger.js';
@@ -47,6 +47,34 @@ const dropPublicCatalogCache = (_req: Request, _res: Response, next: NextFunctio
 // ============================================
 // Inventory API
 // ============================================
+
+/**
+ * GET /api/inventory/part-vocabulary - the part types, for whoever declares parts
+ *
+ * Same reasoning as the catalogue route below. Listing Settings needs a
+ * privilege a technician does not hold, and the declaration screen needs two
+ * rows out of it: which part types this shop uses, and which of them a model
+ * number identifies.
+ *
+ * Without this the fallback quietly wins. readPartTypes returns the shipped
+ * list when Settings cannot be read, so the screen keeps working and shows the
+ * wrong vocabulary - a shop that renamed its types in Settings would find
+ * technicians still declaring against the defaults, with nothing anywhere
+ * saying so. A silent wrong answer is worse than a visible refusal.
+ *
+ * Only these two keys are returned. Settings holds credentials and business
+ * configuration that has nothing to do with naming a part.
+ */
+router.get('/api/inventory/part-vocabulary', requireAdminAuth, requireAnyGranularPermission(['settings.manage', 'inventory.view', 'jobs.view']), async (_req: Request, res: Response) => {
+    try {
+        const all = await settingsRepo.getAllSettings();
+        const wanted = new Set(['part_types', 'part_types_model_critical']);
+        res.json((all ?? []).filter((row: any) => wanted.has(row.key)).map((row: any) => ({ key: row.key, value: row.value })));
+    } catch (error) {
+        console.error('Error fetching part vocabulary:', error);
+        res.status(500).json({ error: 'Failed to fetch part vocabulary' });
+    }
+});
 
 /**
  * GET /api/inventory/parts-catalog - the parts list, for whoever declares parts
