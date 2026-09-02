@@ -1746,37 +1746,35 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
                                 isSaving={savePartsMutation.isPending}
                                 onSave={(lines) => savePartsMutation.mutate(lines)}
                                 onCancel={() => setIsPartsDeclarationOpen(false)}
+                                footerAction={
+                                    /*
+                                      * The way through, for the person allowed to take it.
+                                      *
+                                      * A technician can be off shift with a customer waiting.
+                                      * A gate with no way through does not produce declarations,
+                                      * it produces people closing jobs somewhere else. Recording
+                                      * the exception under a name is what makes it countable.
+                                      *
+                                      * Inside the footer, not beside the component: this screen is
+                                      * h-full, so a sibling after it sat below the fold in a band
+                                      * of dead space.
+                                      */
+                                    (user?.role === "Super Admin" || user?.role === "Manager") ? (
+                                        <button
+                                            type="button"
+                                            disabled={advanceStatusMutation.isPending}
+                                            onClick={() => {
+                                                setIsPartsDeclarationOpen(false);
+                                                advanceStatusMutation.mutate({ id: selectedJob!.id, partsOverride: true });
+                                            }}
+                                            className="w-full rounded-lg border border-slate-200 bg-white py-2 text-[12px] font-semibold text-slate-500 transition-colors active:bg-slate-100 disabled:opacity-50"
+                                        >
+                                            Complete without declaring
+                                        </button>
+                                    ) : null
+                                }
                             />
                         </Suspense>
-                    )}
-                    {/*
-                      * The way through, for the person allowed to take it.
-                      *
-                      * A technician can be off shift with a customer waiting at
-                      * the counter. A gate with no way through does not produce
-                      * declarations; it produces people closing jobs somewhere
-                      * else, or not closing them at all. This records the
-                      * exception under a name instead — which is what makes it
-                      * countable, and what makes the gate survivable.
-                      *
-                      * Deliberately plain and last: it should be the thing you
-                      * reach for when the right answer is not available, not
-                      * the thing you notice first.
-                      */}
-                    {selectedJob && (user?.role === "Super Admin" || user?.role === "Manager") && (
-                        <div className="border-t border-slate-200 bg-slate-50 px-4 py-3">
-                            <button
-                                type="button"
-                                disabled={advanceStatusMutation.isPending}
-                                onClick={() => {
-                                    setIsPartsDeclarationOpen(false);
-                                    advanceStatusMutation.mutate({ id: selectedJob.id, partsOverride: true });
-                                }}
-                                className="w-full rounded-lg border border-slate-300 bg-white py-2.5 text-[13px] font-semibold text-slate-600 transition-colors hover:bg-slate-100 disabled:opacity-50"
-                            >
-                                Complete without declaring — recorded against your name
-                            </button>
-                        </div>
                     )}
                 </DialogContent>
             </Dialog>

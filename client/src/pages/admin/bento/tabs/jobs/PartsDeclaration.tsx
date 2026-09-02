@@ -79,6 +79,16 @@ export interface PartsDeclarationProps {
     isSaving: boolean;
     onSave: (lines: ProductLineItem[]) => void;
     onCancel: () => void;
+    /**
+     * An extra action for the footer, e.g. a Manager completing without
+     * declaring.
+     *
+     * Taken as a prop rather than rendered beside this component, because this
+     * component is h-full: a sibling after it is pushed past the bottom of the
+     * dialog, leaving a band of dead white space and an action nobody can reach
+     * without scrolling a screen that does not scroll.
+     */
+    footerAction?: React.ReactNode;
 }
 
 type Tone = "emerald" | "blue" | "amber" | "rose" | "violet" | "slate";
@@ -138,6 +148,7 @@ export function PartsDeclaration({
     isSaving,
     onSave,
     onCancel,
+    footerAction,
 }: PartsDeclarationProps) {
     const [lines, setLines] = useState<ProductLineItem[]>(initialLines);
     const [query, setQuery] = useState("");
@@ -493,9 +504,21 @@ export function PartsDeclaration({
                                     <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-100">
                                         <Package className="h-4 w-4 text-slate-400" />
                                     </span>
-                                    <p className="text-[15px] font-bold text-slate-950 md:text-[13px]">Nothing stocked by that name</p>
+                                    {/*
+                                      * Two different facts, two different
+                                      * sentences. "Nothing stocked by that name"
+                                      * with an empty search box blames a search
+                                      * nobody made, and reads as a fault when
+                                      * the real answer is that the catalogue is
+                                      * empty.
+                                      */}
+                                    <p className="text-[15px] font-bold text-slate-950 md:text-[13px]">
+                                        {query.trim() ? "Nothing stocked by that name" : "No parts in stock yet"}
+                                    </p>
                                     <p className="text-[12px] font-medium text-slate-500 md:text-[10px]">
-                                        If it was bought from a local vendor, add it as a sourced part.
+                                        {query.trim()
+                                            ? "If it was bought from a local vendor, add it as a sourced part."
+                                            : "Search to find a part, or add one bought from a local vendor."}
                                     </p>
                                 </div>
                                 {sourcedOpen ? (
@@ -580,12 +603,17 @@ export function PartsDeclaration({
 
                     <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto px-3 py-2 md:px-0">
                         {lines.length === 0 ? (
-                            <div className="flex flex-col items-center gap-1.5 px-3 py-6 text-center">
-                                <p className="text-[15px] font-bold text-slate-950 md:text-[13px]">Nothing added yet</p>
-                                <p className="text-[12px] font-medium text-slate-500 md:text-[10px]">
-                                    Search above, or record that nothing was used.
-                                </p>
-                            </div>
+                            /*
+                             * One quiet line, not a second empty state.
+                             *
+                             * A centred block here repeated what the catalogue
+                             * above had already said, in a taller box, so a
+                             * phone showing nothing declared spent most of its
+                             * screen saying so twice.
+                             */
+                            <p className="px-3 py-2 text-[12px] font-medium text-slate-400 md:text-[10px]">
+                                Nothing added yet — search above, or record that nothing was used.
+                            </p>
                         ) : (
                             lines.map((line) => <LineRow key={line.id} line={line} />)
                         )}
@@ -628,6 +656,7 @@ export function PartsDeclaration({
                         )}
                     </div>
                 </div>
+                {footerAction && <div className="mt-2.5">{footerAction}</div>}
             </div>
         </div>
     );
