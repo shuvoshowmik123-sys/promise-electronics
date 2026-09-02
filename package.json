@@ -40,7 +40,7 @@
     "schema:adoption:emit-frozen-identity": "tsx scripts/emit-frozen-source-identity.ts",
     "schema:check:prod": "tsx scripts/check-production-schema.ts",
     "seed:policies": "node scripts/seed-policies.mjs",
-    "app:sync": "npm run build && cap sync android",
+    "app:sync": "npm run build && cap sync android && node scripts/apply-app-loader.mjs android/app/src/main/assets/public/index.html",
     "app:bundle": "node scripts/make-web-bundle.mjs",
     "test:smoke": "node scripts/smoke-test.mjs",
     "app:open": "cap open android"

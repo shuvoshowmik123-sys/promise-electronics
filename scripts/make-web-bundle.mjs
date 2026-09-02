@@ -26,11 +26,29 @@
  * rollback. The first version of this script did exactly that.
  */
 
-import { createWriteStream, existsSync, readFileSync, promises as fsp } from "fs";
+import { createWriteStream, existsSync, readFileSync, writeFileSync, promises as fsp } from "fs";
 import { mkdir } from "fs/promises";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import archiver from "archiver";
+import { execFileSync } from "child_process";
+import { tmpdir } from "os";
+
+/**
+ * index.html with the staff app's boot copy, without touching dist/public.
+ *
+ * Reuses the one script that owns those strings, so the bundle and the APK can
+ * never drift into saying different things while booting the same app.
+ */
+function appLoaderHtml(sourceIndex) {
+    const scratch = join(tmpdir(), `promise-app-index-${Date.now()}.html`);
+    writeFileSync(scratch, readFileSync(sourceIndex, "utf-8"), "utf-8");
+    execFileSync(process.execPath, [
+        join(dirname(fileURLToPath(import.meta.url)), "apply-app-loader.mjs"),
+        scratch,
+    ], { stdio: "inherit" });
+    return readFileSync(scratch, "utf-8");
+}
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const source = join(root, "dist", "public");
@@ -70,9 +88,19 @@ await new Promise((resolve, reject) => {
     archive.on("error", reject);
 
     archive.pipe(out);
-    // `false` is what places the contents at the root of the archive instead of
-    // nesting them under a directory name.
-    archive.directory(source, false);
+    /**
+     * Everything except index.html, which goes in rewritten.
+     *
+     * The bundle replaces the app's whole web layer, index.html included, so
+     * shipping the unmodified one would put "Preparing your customer portal"
+     * back on the staff app's boot screen at the next over-the-air update —
+     * undoing the fix applied at sync time, silently, weeks later.
+     *
+     * dist/public itself is left alone: the web deploy serves that same folder,
+     * and admin copy there would put "Admin Control" on the customer site.
+     */
+    archive.glob("**/*", { cwd: source, ignore: ["index.html"], dot: false });
+    archive.append(appLoaderHtml(join(source, "index.html")), { name: "index.html" });
     archive.finalize();
 });
 
