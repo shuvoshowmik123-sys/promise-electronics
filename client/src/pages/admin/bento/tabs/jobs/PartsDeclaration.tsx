@@ -471,7 +471,24 @@ export function PartsDeclaration({
                   * pathologically long inventory name; any long real name does
                   * the same.
                   */}
-                <div className="flex min-h-0 min-w-0 flex-1 flex-col md:rounded-2xl md:border md:border-slate-200 md:bg-white md:p-3">
+                {/*
+                  * Sizes to its contents when there is nothing to list.
+                  *
+                  * flex-1 unconditionally meant an empty catalogue still claimed
+                  * every spare pixel, so a phone with no stock showed a search
+                  * box, a short message, and then eight hundred pixels of blank
+                  * grey before anything else — which reads as a screen that
+                  * failed to load rather than a shop with no parts entered yet.
+                  *
+                  * With results it grows again, which is when the room is
+                  * actually wanted.
+                  */}
+                <div
+                    className={cn(
+                        "flex min-h-0 min-w-0 flex-col md:flex-1 md:rounded-2xl md:border md:border-slate-200 md:bg-white md:p-3",
+                        results.length === 0 ? "flex-none" : "flex-1",
+                    )}
+                >
                     <div className="flex-none px-3 pt-2 md:px-0 md:pt-0">
                         <div className="relative">
                             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -497,7 +514,12 @@ export function PartsDeclaration({
                         </div>
                     </div>
 
-                    <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto px-3 pt-2 pb-2 md:px-0">
+                    <div
+                        className={cn(
+                            "min-h-0 space-y-1.5 overflow-y-auto px-3 pt-2 pb-2 md:flex-1 md:px-0",
+                            results.length === 0 ? "flex-none" : "flex-1",
+                        )}
+                    >
                         {results.length === 0 ? (
                             <div className="space-y-2">
                                 <div className="flex flex-col items-center gap-2 px-3 py-6 text-center">
@@ -558,7 +580,24 @@ export function PartsDeclaration({
                                             </button>
                                         </div>
                                     </div>
-                                ) : trimmedQuery ? (
+                                ) : (
+                                    /*
+                                      * Offered whether or not anything was typed.
+                                      *
+                                      * This was gated on a search term, so the
+                                      * empty screen told somebody to "add one
+                                      * bought from a local vendor" and then gave
+                                      * them nothing to press. An instruction with
+                                      * no control is worse than no instruction:
+                                      * they go looking for a button that was
+                                      * never rendered, and conclude the screen is
+                                      * broken.
+                                      *
+                                      * A shop with an empty catalogue — which is
+                                      * every shop before stock is entered — has
+                                      * exactly one useful action here, and this
+                                      * is it.
+                                      */
                                     <button
                                         type="button"
                                         onClick={openSourcedForm}
@@ -567,11 +606,13 @@ export function PartsDeclaration({
                                         <span className="flex min-w-0 items-center gap-2">
                                             <PackagePlus className="h-4 w-4 shrink-0 text-violet-700" />
                                             <span className="truncate text-[13px] font-bold text-violet-700">
-                                                Add &ldquo;{trimmedQuery}&rdquo; as a sourced part
+                                                {trimmedQuery
+                                                    ? `Add \u201c${trimmedQuery}\u201d as a sourced part`
+                                                    : "Add a part bought from a local vendor"}
                                             </span>
                                         </span>
                                     </button>
-                                ) : null}
+                                )}
                             </div>
                         ) : (
                             results.map((item) => <ResultRow key={item.id} item={item} />)
