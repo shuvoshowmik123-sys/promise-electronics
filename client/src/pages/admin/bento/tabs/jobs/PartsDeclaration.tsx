@@ -451,6 +451,19 @@ export function PartsDeclaration({
          * x=3640 in a 1440px viewport, unreachable by mouse or wheel.
          */
         <div className="flex h-auto max-h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-[#f8fafc] md:h-full">
+            {/*
+              * The grabber. Phone only.
+              *
+              * It is what tells somebody at a glance that this is a surface over
+              * the screen rather than a new page, which is the single clearest
+              * signal that separates an app from a website in a WebView. It is
+              * decoration, not a control - the sheet is dismissed by the close
+              * button beside the title, which is a bigger and more reliable
+              * target than a drag on a scrolling surface.
+              */}
+            <div aria-hidden className="flex flex-none justify-center pt-2.5 pb-1 md:hidden">
+                <span className="h-1 w-9 rounded-full bg-slate-300" />
+            </div>
             {/* Header */}
             <div className="flex-none border-b border-slate-100/80 bg-[#f8fafc] px-3 pb-2 pt-2 md:px-4">
                 <div className="flex items-start justify-between gap-2">
@@ -537,7 +550,25 @@ export function PartsDeclaration({
                     <div
                         className={cn(
                             "min-h-0 flex-1 space-y-1.5 overflow-y-auto px-3 pt-2 pb-2 md:px-0",
-                            results.length === 0 && "flex flex-col justify-center",
+                            /*
+                             * Centred only while nothing here can overflow.
+                             *
+                             * justify-center on a scrolling column hides the top
+                             * of its own content: the overflow goes above the
+                             * start of the scroll range and scrollTop cannot be
+                             * negative, so it can never be reached. Empty, the
+                             * message fits and it looks right - which is why the
+                             * release that added it seemed fine. Open the part
+                             * form and the content grows past the box, and the
+                             * first field scrolls up out of sight with no way
+                             * back to it.
+                             *
+                             * So the centring is dropped the moment the form
+                             * opens, and the content aligns to the top where it
+                             * can be scrolled normally.
+                             */
+                            results.length === 0 && !sourcedOpen && "flex flex-col justify-center",
+                            "overscroll-contain [-webkit-overflow-scrolling:touch]",
                         )}
                     >
                         {results.length === 0 ? (
@@ -582,14 +613,14 @@ export function PartsDeclaration({
                                             </label>
                                         </div>
                                         <div className="mt-2.5 grid grid-cols-2 gap-2">
-                                            <button type="button" onClick={() => setSourcedOpen(false)} className="h-10 rounded-xl border border-slate-200 bg-white text-[11px] font-bold text-slate-500 active:scale-[0.98]">
+                                            <button type="button" onClick={() => setSourcedOpen(false)} className="h-12 rounded-xl border border-slate-200 bg-white text-[13px] font-bold text-slate-500 transition-transform active:scale-[0.97] md:h-10 md:text-[11px]">
                                                 Cancel
                                             </button>
                                             <button
                                                 type="button"
                                                 onClick={addSourced}
                                                 disabled={!sourcedName.trim() || sourcedPrice.trim() === ""}
-                                                className="flex h-10 items-center justify-center gap-1 rounded-xl bg-violet-600 text-[11px] font-bold text-white active:scale-[0.98] disabled:opacity-40"
+                                                className="flex h-12 items-center justify-center gap-1 rounded-xl bg-violet-600 text-[13px] font-bold text-white shadow-sm transition-transform active:scale-[0.97] disabled:opacity-40 md:h-10 md:text-[11px]"
                                             >
                                                 <Plus className="h-3.5 w-3.5" />
                                                 Add part

@@ -1760,7 +1760,14 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
                   * scrolls inside. Desktop keeps its fixed 85vh, where a stable
                   * two-column height is wanted and there is no void to begin with.
                   */}
-                <DialogContent className="w-[calc(100vw-1.5rem)] max-w-none h-auto max-h-[92dvh] p-0 gap-0 rounded-2xl border-0 md:h-[85vh] md:w-[92vw] md:max-w-4xl overflow-hidden [&>button]:hidden">
+                <DialogContent
+                    variant={isMobile ? "sheet" : "modal"}
+                    className={
+                        isMobile
+                            ? "p-0 gap-0 [&>button]:hidden"
+                            : "w-[92vw] max-w-4xl h-[85vh] p-0 gap-0 rounded-2xl overflow-hidden [&>button]:hidden"
+                    }
+                >
                     <DialogTitle className="sr-only">Parts used</DialogTitle>
                     {selectedJob && (
                         <Suspense fallback={null}>

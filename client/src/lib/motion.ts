@@ -77,6 +77,24 @@ export const variants: any = {
         exit: { opacity: 0, scale: 0.96, y: 6, transition: { duration: 0.15 } },
     },
 
+    /**
+     * Bottom sheet - what Android does, rather than what the web does.
+     *
+     * modalContent scales up from the middle of the screen, which is a desktop
+     * dialog gesture. A phone expects a surface to arrive from the edge it is
+     * anchored to, so this travels its own height and lands with the same
+     * spring the rest of the app uses. Exit is deliberately quicker than entry
+     * and eased out: a sheet that leaves as slowly as it arrived feels like lag.
+     *
+     * Transform-only, so it composites on the GPU and stays smooth on the older
+     * hardware this runs on.
+     */
+    sheetContent: {
+        initial: { y: "100%" },
+        animate: { y: 0, transition: transitions.spring },
+        exit: { y: "100%", transition: { duration: 0.2, ease: [0.4, 0, 1, 1] } },
+    },
+
     // ── DROPDOWN / POPOVER ──────────────────────────────
     dropdownEnter: {
         initial: { opacity: 0, scaleY: 0.92, y: -4 },

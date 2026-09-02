@@ -36,19 +36,36 @@ DialogOverlay.displayName = DialogPrimitive.Overlay.displayName
 
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & { overlayClassName?: string }
->(({ className, children, overlayClassName, ...props }, ref) => (
+  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
+    overlayClassName?: string;
+    /**
+     * "sheet" anchors to the bottom edge and slides up, the way an Android
+     * bottom sheet does. Opt-in: every existing dialog keeps the centred modal
+     * it has today.
+     *
+     * The two presentations do not share a base class string. Merging them and
+     * overriding with md: prefixes looked tidier and does not work - Tailwind
+     * decides which of two competing translate utilities wins by stylesheet
+     * order, not by the order they are written, and framer-motion writes an
+     * inline transform for the slide that beats both. Separate strings, chosen
+     * per viewport by the caller, leave nothing to fight over.
+     */
+    variant?: "modal" | "sheet";
+  }
+>(({ className, children, overlayClassName, variant = "modal", ...props }, ref) => (
   <DialogPortal>
     <DialogOverlay className={overlayClassName} />
     <DialogPrimitive.Content asChild {...props}>
       <motion.div
         ref={ref}
-        variants={variants.modalContent}
+        variants={variant === "sheet" ? variants.sheetContent : variants.modalContent}
         initial="initial"
         animate="animate"
         exit="exit"
         className={cn(
-          "fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 shadow-lg max-h-[calc(100dvh-2rem)] overflow-y-auto sm:rounded-[2rem]",
+          variant === "sheet"
+            ? "fixed inset-x-0 bottom-0 z-50 flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-t-[1.75rem] border-0 bg-background shadow-2xl"
+            : "fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 shadow-lg max-h-[calc(100dvh-2rem)] overflow-y-auto sm:rounded-[2rem]",
           className
         )}
       >
