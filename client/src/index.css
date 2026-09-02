@@ -331,6 +331,30 @@ html[data-customer-lang="bn"] .customer-portal-shell .font-heading {
     user-select: none;
   }
 
+  /*
+   * A dropdown's options are painted by the OS, so they must be told what to
+   * look like explicitly.
+   *
+   * On this WebView the part-type picker came back as a full-height list of
+   * blank rows: the popup was sized for all eleven options and not one label
+   * was readable, with the placeholder in a cursive fallback. The popup is not
+   * part of the page, so it inherits neither the font stack set on body nor a
+   * usable colour, and it does inherit the user-select:none set on select
+   * above. Whatever combination of those Android resolved to, the result was
+   * white text on a white sheet.
+   *
+   * Six other admin screens still use a native select. Stating colour, ground
+   * and font on the option itself - which Chrome on Android does honour in the
+   * popup - fixes those too, without rewriting each one.
+   */
+  select option {
+    color: #0f172a;
+    background-color: #ffffff;
+    font-family: 'Noto Sans Bengali', 'Inter', sans-serif;
+    -webkit-user-select: auto;
+    user-select: auto;
+  }
+
   input,
   textarea,
   [contenteditable="true"] {

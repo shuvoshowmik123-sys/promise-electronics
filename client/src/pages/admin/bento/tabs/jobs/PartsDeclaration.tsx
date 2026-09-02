@@ -570,19 +570,54 @@ export function PartsDeclaration({
                   * sits behind it with nothing left to scroll.
                   */}
                 <div className="min-h-0 flex-1 space-y-3.5 overflow-y-auto overscroll-contain px-3 py-3.5 pb-24 [-webkit-overflow-scrolling:touch] md:px-4 md:pb-4">
-                    <label className="block">
+                    {/*
+                      * Tappable list, not a <select>.
+                      *
+                      * A select hands its dropdown to Android, which renders it
+                      * outside the page with its own rules. In this WebView the
+                      * option labels came back blank on a white sheet - the
+                      * picker was the right height for all eleven types and
+                      * every one of them was invisible - with the placeholder in
+                      * a cursive fallback, because the OS picker does not
+                      * inherit the page's font stack and does inherit the
+                      * user-select:none this app sets on select.
+                      *
+                      * A list that is part of the sheet cannot be repainted by
+                      * the OS. It also shows every type at once, which is what
+                      * somebody standing at a bench with a board in one hand
+                      * needs - no dropdown to open, and a target sized for a
+                      * thumb rather than for a mouse.
+                      */}
+                    <div className="block">
                         <span className={LABEL}>Part type</span>
-                        <select
-                            value={sourcedType}
-                            onChange={(e) => setSourcedType(e.target.value)}
-                            className={cn(INPUT, "mt-1.5 h-12 md:h-9")}
-                        >
-                            <option value="">Choose a part type</option>
-                            {partTypes.map((t) => (
-                                <option key={t} value={t}>{t}</option>
-                            ))}
-                        </select>
-                    </label>
+                        <div className="mt-1.5 grid grid-cols-2 gap-2">
+                            {partTypes.map((t) => {
+                                const active = sourcedType === t;
+                                return (
+                                    <button
+                                        key={t}
+                                        type="button"
+                                        onClick={() => setSourcedType(t)}
+                                        aria-pressed={active}
+                                        className={cn(
+                                            "flex min-h-[3rem] items-center rounded-xl border px-3 py-2 text-left text-[13px] font-bold transition-transform active:scale-[0.97]",
+                                            active
+                                                ? "border-violet-300 bg-violet-600 text-white shadow-sm"
+                                                : "border-slate-200 bg-white text-slate-700",
+                                        )}
+                                    >
+                                        {t}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                        {partTypes.length === 0 && (
+                            <p className="mt-1.5 flex items-center gap-1 text-[12px] font-medium text-amber-700">
+                                <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                                No part types are configured. Add them in Settings.
+                            </p>
+                        )}
+                    </div>
 
                     <div className="block">
                         <span className={LABEL}>
