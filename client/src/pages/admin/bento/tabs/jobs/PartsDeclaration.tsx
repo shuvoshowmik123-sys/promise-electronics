@@ -632,7 +632,27 @@ export function PartsDeclaration({
                   * that matters most at the counter had the least room precisely
                   * when it was longest.
                   */}
-                <div className="flex min-h-0 max-h-[45%] flex-none flex-col border-t border-slate-200 bg-white md:max-h-none md:w-[380px] md:flex-1 md:shrink-0 md:rounded-2xl md:border md:p-3">
+                <div
+                    className={cn(
+                        "flex min-h-0 flex-col border-t border-slate-200 bg-white md:max-h-none md:w-[380px] md:flex-1 md:shrink-0 md:rounded-2xl md:border md:p-3",
+                        /*
+                         * Whichever panel is not showing a list absorbs the
+                         * space, so no band of page background is ever left
+                         * stranded between the content and the action bar.
+                         *
+                         * The first attempt gave the empty catalogue flex-none
+                         * and stopped there, which did not remove the gap — it
+                         * moved it below the declared section, where it read
+                         * exactly as badly. Space has to be given to something,
+                         * not merely taken away.
+                         *
+                         * With results in the catalogue the roles swap: it takes
+                         * the room and this is capped, so a long parts list is
+                         * never squeezed by an empty declared panel.
+                         */
+                        results.length === 0 ? "flex-1" : "max-h-[45%] flex-none",
+                    )}
+                >
                     <div className="flex flex-none items-center justify-between gap-2 px-3 pt-2 md:px-0 md:pt-0">
                         <span className={LABEL}>Declared ({lines.length})</span>
                         {incompleteCount > 0 && showErrors && (
