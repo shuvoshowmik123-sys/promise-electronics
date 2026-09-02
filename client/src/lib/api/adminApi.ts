@@ -205,6 +205,18 @@ export type JobTicketsListParams = {
 };
 
 export const jobTicketsApi = {
+    /**
+     * Record that the customer is asking about their repair.
+     *
+     * Wakes the assigned technician by name and tells supervisors by broadcast.
+     * See the route for why those are two different notifications.
+     */
+    customerChase: (id: string, body: { note?: string; urgent?: boolean } = {}) =>
+        fetchApi<{ ok: boolean; notifiedTechnician: boolean }>(`/job-tickets/${id}/customer-chase`, {
+            method: "POST",
+            body: JSON.stringify(body),
+        }),
+
     getAll: (typeOrParams: "all" | "walk-in" | "corporate" | JobTicketsListParams = "walk-in") => {
         const params =
             typeof typeOrParams === "string"

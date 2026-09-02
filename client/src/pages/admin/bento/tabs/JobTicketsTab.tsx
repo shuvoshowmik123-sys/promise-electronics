@@ -486,6 +486,29 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
         onError: () => toast.error("Could not save parts. Nothing was changed."),
     });
 
+    /**
+     * The counter tells the workshop the customer is asking.
+     *
+     * Deliberately one tap with no form. Somebody is on the phone or standing
+     * at the desk while this is pressed, and a dialog asking for a note and a
+     * severity is a dialog that gets skipped - after which the technician
+     * holding the set still learns nothing. The note can be added on the job
+     * itself; what has to happen now is that the right phone buzzes.
+     */
+    const customerChaseMutation = useMutation({
+        mutationFn: ({ id, urgent }: { id: string; urgent?: boolean }) =>
+            jobTicketsApi.customerChase(id, { urgent }),
+        onSuccess: (result) => {
+            queryClient.invalidateQueries({ queryKey: ["jobTickets"] });
+            toast.success(
+                result?.notifiedTechnician
+                    ? "Technician notified. Managers can see it too."
+                    : "Nobody is assigned yet — managers notified.",
+            );
+        },
+        onError: () => toast.error("Could not record that. Nothing was sent."),
+    });
+
     const handleBillAtPos = (job: JobTicket) => {
         // The till reads this id and attaches the job itself. Nothing is
         // pre-selected here, so a stale tap cannot bill the wrong ticket.
@@ -1453,6 +1476,7 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
                                 currencySymbol={getCurrencySymbol()}
                                 billableJobIds={billableJobIds}
                                 onBillAtPos={canBillAtPos ? handleBillAtPos : undefined}
+                                onCustomerChase={(job) => customerChaseMutation.mutate({ id: job.id })}
                                 needsPartsDeclaration={jobNeedsPartsDeclaration}
                                 onDeclareParts={(job) => {
                                     setSelectedJob(job);

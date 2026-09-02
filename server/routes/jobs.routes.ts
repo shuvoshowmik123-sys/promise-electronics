@@ -10,7 +10,7 @@ import { insertJobTicketSchema } from '../../shared/schema.js';
 
 import { notifyAdminUpdate, notifyCustomerUpdate } from './middleware/sse-broker.js';
 import { auditLogger } from '../utils/auditLogger.js';
-import { requireAdminAuth, requirePermission, requireGranularPermission, userHasGranularPermission } from './middleware/auth.js';
+import { requireAdminAuth, requirePermission, requireGranularPermission, requireAnyGranularPermission, userHasGranularPermission } from './middleware/auth.js';
 import { pushService } from '../pushService.js';
 import { jobService } from '../services/job.service.js';
 import { publishAdminNotificationEvent, publishJobTicketEvent } from '../services/admin-realtime.service.js';
@@ -2259,5 +2259,111 @@ router.get('/api/admin/job-tickets/:id/repair-case', requireAdminAuth, requireGr
         res.status(500).json({ error: error.message || 'Failed to load repair case' });
     }
 });
+
+/**
+ * POST /api/job-tickets/:id/customer-chase - the customer is asking about their repair
+ *
+ * There was no way to record this. A customer rings the counter to ask where
+ * their television is, or says it is now urgent, and the only trace was
+ * whatever the person who answered remembered to say out loud. The technician
+ * holding the set - the one person who can act on it - was the least likely to
+ * hear. call-attempts is the opposite direction: us ringing them.
+ *
+ * Two audiences, deliberately different notifications:
+ *
+ *   The assigned technician is told by name, so it arrives as a personal row
+ *   and a push on their own phone. This is work, not news.
+ *
+ *   Supervisors are told by broadcast. Because broadcast job notifications are
+ *   now supervisory-only, that reaches managers and Super Admin and nobody
+ *   else - the same rule doing the work in the other direction. They are
+ *   watching for a chase that repeats, which is the signal that a job is
+ *   stuck and the technician has not said so.
+ *
+ * An unassigned job has no technician to wake, so only the broadcast goes out:
+ * a chase on unassigned work is exactly a supervisor's problem.
+ *
+ * Neither notification can fail the request. The chase is worth recording even
+ * if Firebase is unreachable, and the customer is standing at the counter.
+ */
+router.post('/api/job-tickets/:id/customer-chase', requireAdminAuth, requireAnyGranularPermission(['jobs.view', 'serviceRequests.logCall']), async (req: Request, res: Response) => {
+    try {
+        const job = await jobRepo.getJobTicket(req.params.id);
+        if (!job) return res.status(404).json({ error: 'Job not found' });
+
+        const actor = (req as any).user;
+        const rawNote = typeof req.body?.note === 'string' ? req.body.note.trim() : '';
+        // Bounded because it lands in a push body and a notification row; a
+        // pasted essay would be truncated by the OS anyway, unreadably.
+        const note = rawNote.slice(0, 200);
+        const urgent = req.body?.urgent === true;
+
+        const device = (job as any).device || 'Device';
+        const label = urgent ? 'Customer says it is urgent' : 'Customer asked about their repair';
+        const body = note
+            ? `${device} — ${note} (Job ${job.id})`
+            : `${device}. Job ${job.id}.`;
+
+        const assignedId = (job as any).assignedTechnicianId;
+
+        if (assignedId) {
+            const { notifyStaffAssignment } = await import('../services/staff-assignment-notify.service.js');
+            await notifyStaffAssignment({
+                userId: String(assignedId),
+                title: label,
+                message: body,
+                link: '/admin?tab=jobs',
+                type: urgent ? 'customer_urgent' : 'customer_chase',
+                jobId: job.id,
+            });
+        }
+
+        // Supervisors: one broadcast row, plus a push narrowed to the same
+        // people the feed rule admits, so the bell and the phone agree.
+        try {
+            await notificationRepo.createNotification({
+                userId: 'broadcast',
+                title: assignedId ? label : `${label} — nobody assigned`,
+                message: body,
+                type: urgent ? 'customer_urgent' : 'customer_chase',
+                link: '/admin?tab=jobs',
+                jobId: job.id,
+                contextType: 'staff',
+            } as any);
+        } catch (err) {
+            console.error('[CustomerChase] Supervisor bell failed:', (err as Error).message);
+        }
+
+        try {
+            const { sendPushToAllAdmins } = await import('../services/fcm.service.js');
+            void sendPushToAllAdmins(
+                {
+                    title: assignedId ? label : `${label} — nobody assigned`,
+                    body,
+                    data: { type: urgent ? 'customer_urgent' : 'customer_chase', url: '/admin?tab=jobs', jobId: job.id },
+                },
+                ['jobs.assignTechnician', 'jobs.reportOutcome', 'jobs.edit'],
+            ).catch(() => {});
+        } catch (err) {
+            console.error('[CustomerChase] Supervisor push failed:', (err as Error).message);
+        }
+
+        auditLogger.log({
+            userId: actor?.id || 'unknown',
+            action: 'CUSTOMER_CHASE_LOGGED',
+            entity: 'JobTicket',
+            entityId: job.id,
+            details: urgent ? 'Customer marked the repair urgent' : 'Customer asked about their repair',
+            req,
+            severity: 'info',
+        });
+
+        res.json({ ok: true, notifiedTechnician: Boolean(assignedId) });
+    } catch (error) {
+        console.error('[Jobs.CustomerChase]', (error as Error).message);
+        res.status(500).json({ error: 'Failed to record the chase' });
+    }
+});
+
 
 export default router;

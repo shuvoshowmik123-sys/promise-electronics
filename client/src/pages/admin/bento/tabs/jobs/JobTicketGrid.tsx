@@ -73,6 +73,8 @@ interface JobTicketGridProps {
     /** Ids the server's ready-for-billing list actually returned. */
     billableJobIds?: Set<string>;
     onBillAtPos?: (job: JobTicket) => void;
+    /** Passed straight through to the card; see JobCardMobile. */
+    onCustomerChase?: (job: JobTicket) => void;
     /** Decides whether a job still owes a parts declaration. */
     needsPartsDeclaration?: (job: JobTicket) => boolean;
     onDeclareParts?: (job: JobTicket) => void;
@@ -99,6 +101,7 @@ export function JobTicketGrid({
     currencySymbol = "৳",
     billableJobIds,
     onBillAtPos,
+    onCustomerChase,
     needsPartsDeclaration,
     onDeclareParts,
 }: JobTicketGridProps) {
@@ -131,6 +134,7 @@ export function JobTicketGrid({
                         currencySymbol={currencySymbol}
                         isBillable={billableJobIds?.has(job.id) ?? false}
                         onBillAtPos={onBillAtPos}
+                        onCustomerChase={onCustomerChase}
                         needsPartsDeclaration={needsPartsDeclaration?.(job) ?? false}
                         onDeclareParts={onDeclareParts}
                     />

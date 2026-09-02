@@ -66,12 +66,34 @@ function canSeeNotificationItem(
         ]);
     }
 
-    // Job-related
+    /*
+     * Job news that is addressed to nobody is supervisory news.
+     *
+     * Everything above this line has already returned for anything addressed to
+     * the reader, so only broadcasts reach here - and this branch admitted
+     * anyone holding jobs.view, which is every technician in the shop. That
+     * meant a technician's bell filled with movement on jobs belonging to other
+     * technicians: whose repair was rejected, whose customer is chasing, which
+     * set came back a second time. None of it is theirs to see, and collectively
+     * it is a picture of the whole workshop's performance handed to everyone in
+     * it.
+     *
+     * A technician loses nothing. Work that concerns them is written to them by
+     * name - notifyStaffAssignment creates a personal row for the assignment and
+     * every nudge that follows it - and personal rows are returned above without
+     * consulting this branch at all. What is removed here is only the traffic
+     * about other people's jobs.
+     *
+     * Assigning, editing and reporting outcomes are supervisory acts: whoever
+     * may reassign a job or overrule its result is meant to be watching the
+     * board. jobs.view on its own is not that - it is the permission a
+     * technician needs to open the job in front of them.
+     */
     if (['job_ready', 'smart_sync_needed', 'job'].includes(type) || !!item.jobId) {
         return hasAnyPermission(perms, [
-            'jobs',
-            'jobs.view', 'jobs.create', 'jobs.assignTechnician',
-            'jobs.reportOutcome', 'jobs.advanceStatus', 'jobs.edit',
+            'jobs.assignTechnician',
+            'jobs.reportOutcome',
+            'jobs.edit',
         ]);
     }
 

@@ -192,12 +192,45 @@ describe("canSeeNotificationItem — Phase 24B", () => {
 
     // ── Technician with jobs.view ─────────────────────────────────────────────
 
-    it("Technician with jobs.view sees job_ready", () => {
-        expect(canSeeNotificationItem(TECH_JOBS_VIEW, makeItem({ type: "job_ready", userId: "broadcast" }))).toBe(true);
+    /*
+     * These two asserted the leak.
+     *
+     * jobs.view is the permission a technician needs to open the job in front
+     * of them, and it was admitting them to every unaddressed job notification
+     * in the shop - whose repair was rejected, whose customer is chasing, which
+     * set came back twice. Collectively that is the whole workshop's
+     * performance, delivered to everyone working in it.
+     *
+     * The behaviour is inverted deliberately, so the tests now state the rule
+     * rather than the accident: broadcast job news is supervisory, and a
+     * technician learns about their own work from rows addressed to them.
+     */
+    it("Technician with jobs.view does NOT see broadcast job_ready", () => {
+        expect(canSeeNotificationItem(TECH_JOBS_VIEW, makeItem({ type: "job_ready", userId: "broadcast" }))).toBe(false);
     });
 
-    it("Technician with jobs.view sees item with jobId", () => {
-        expect(canSeeNotificationItem(TECH_JOBS_VIEW, makeItem({ type: "info", jobId: "JOB-1", userId: "broadcast" }))).toBe(true);
+    it("Technician with jobs.view does NOT see a broadcast item with jobId", () => {
+        expect(canSeeNotificationItem(TECH_JOBS_VIEW, makeItem({ type: "info", jobId: "JOB-1", userId: "broadcast" }))).toBe(false);
+    });
+
+    it("Technician still sees a job notification addressed to them", () => {
+        expect(
+            canSeeNotificationItem(
+                TECH_JOBS_VIEW,
+                makeItem({ type: "job_ready", jobId: "JOB-1", userId: "tech-1" }),
+                "tech-1",
+            ),
+        ).toBe(true);
+    });
+
+    it("Technician does NOT see a job notification addressed to another technician", () => {
+        expect(
+            canSeeNotificationItem(
+                TECH_JOBS_VIEW,
+                makeItem({ type: "job_ready", jobId: "JOB-1", userId: "tech-2" }),
+                "tech-1",
+            ),
+        ).toBe(false);
     });
 
     it("Technician with jobs.view does NOT see low_stock", () => {

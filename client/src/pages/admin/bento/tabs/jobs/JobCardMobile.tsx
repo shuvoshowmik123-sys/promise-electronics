@@ -1,6 +1,6 @@
 import { motion } from "framer-motion";
 import type { MouseEvent } from "react";
-import { CreditCard, PackagePlus, User, UserCheck } from "lucide-react";
+import { CreditCard, PackagePlus, User, UserCheck, PhoneCall } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -43,6 +43,14 @@ interface JobCardMobileProps {
      */
     isBillable?: boolean;
     onBillAtPos?: (job: JobTicket) => void;
+    /**
+     * Record that the customer is asking about this repair.
+     *
+     * Optional in the same way onBillAtPos is: the parent passes it only to
+     * people allowed to do it, and its absence removes the control rather than
+     * showing one that refuses.
+     */
+    onCustomerChase?: (job: JobTicket) => void;
     /** True when this job has no parts recorded — what the nightly nudge chases. */
     needsPartsDeclaration?: boolean;
     onDeclareParts?: (job: JobTicket) => void;
@@ -70,6 +78,7 @@ export function JobCardMobile({
     currencySymbol,
     isBillable = false,
     onBillAtPos,
+    onCustomerChase,
     needsPartsDeclaration = false,
     onDeclareParts,
 }: JobCardMobileProps) {
@@ -199,6 +208,24 @@ export function JobCardMobile({
                         >
                             <PackagePlus className="w-3.5 h-3.5" />
                             List parts used
+                        </Button>
+                    )}
+                    {/*
+                      * Above Bill at POS, because it is the one action here
+                      * that is time-critical: somebody is on the phone now.
+                      * Not shown once the job is delivered - there is nothing
+                      * left for a technician to be woken about.
+                      */}
+                    {onCustomerChase && job.status !== "Delivered" && (
+                        <Button
+                            onClick={(event) => {
+                                event.stopPropagation();
+                                onCustomerChase(job);
+                            }}
+                            className="h-9 w-full rounded-lg gap-1.5 border border-amber-200 bg-amber-50 text-[11px] font-bold text-amber-800 shadow-none hover:bg-amber-100"
+                        >
+                            <PhoneCall className="w-3.5 h-3.5" />
+                            Customer asking
                         </Button>
                     )}
                     {isBillable && onBillAtPos && (

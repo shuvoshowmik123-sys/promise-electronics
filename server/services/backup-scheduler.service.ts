@@ -309,7 +309,17 @@ export async function processClaimedBackupRun(
       title: `Promise Electronics backup failed — ${claim.runDay}`,
       body: "The automated database backup did not complete. Review it in Super Admin system status.",
       data: { type: "backup_failure", date: claim.runDay },
-    }).catch(() => {});
+      /*
+       * Whoever administers the system, and nobody else.
+       *
+       * This went out with no permission filter, so listActiveStaffDeviceTokens
+       * returned every staff token and a failed database backup woke every
+       * technician, driver and cashier holding a phone. None of them can act on
+       * it and none of them should be told the state of the backups. Constant
+       * alerts nobody can act on are also how people learn to swipe away the
+       * one that was actually theirs.
+       */
+    }, ['settings.manage']).catch(() => {});
   }
   return ok ? "failed" : "stale";
 }

@@ -450,6 +450,31 @@ export function PartsDeclaration({
                 <div className="flex items-start gap-2">
                     <div className="min-w-0 flex-1">
                         <p className="truncate text-[15px] font-bold text-slate-950 md:text-[13px]">{line.name}</p>
+                        {/*
+                          * What the part is, always stated - including when the
+                          * answer is that nobody recorded it.
+                          *
+                          * The row showed a name and a price and nothing else,
+                          * so the type and model number this screen now collects
+                          * were written to the job and never shown back. Worse,
+                          * a line declared before those fields existed looked
+                          * identical to one declared with both, and the only way
+                          * to tell them apart was to open the database.
+                          *
+                          * Missing reads as n/a rather than as a blank or an
+                          * omitted row, which is the same convention
+                          * formatModelNumber already applies: a gap that is
+                          * visible can be filled, and a gap that is hidden gets
+                          * mistaken for an answer. Nothing is filtered or
+                          * hidden for being incomplete - an old line still
+                          * shows, still totals, and still says what it does not
+                          * know.
+                          */}
+                        <p className="mt-0.5 truncate text-[12px] font-medium text-slate-500 md:text-[10px]">
+                            {line.partType || NO_MODEL_VALUE}
+                            {" \u00b7 "}
+                            {formatModelNumber(line.modelNumber)}
+                        </p>
                         <div className="mt-0.5 flex items-center gap-1.5">
                             <span className="text-[12px] font-medium text-slate-500 tabular-nums md:text-[10px]">
                                 {money(line.unitPrice)} each
