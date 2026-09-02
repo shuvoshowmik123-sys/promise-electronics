@@ -95,9 +95,23 @@ export function hasModelAnswer(modelNumber: string | null | undefined): boolean 
     return Boolean(modelNumber && modelNumber.trim().length > 0);
 }
 
-/** Display: "n/a" reads better as an explicit absence than as a code. */
+/**
+ * What to show for a model number, including when there is none.
+ *
+ * Both "never answered" and "answered: no marking" display as n/a. Stock that
+ * predates these fields would otherwise show a dash that reads like something
+ * failed to load, on shelves where nothing is wrong — the fields simply did not
+ * exist when those rows were created.
+ *
+ * The distinction is kept in the data, not on the screen: hasModelAnswer() is
+ * still false for an unanswered row and true for one written as n/a, so a
+ * backlog of parts nobody has identified can still be listed and cleared. What
+ * a technician needs at a shelf is "this part has no model to match on"; which
+ * of the two reasons applies is an administrator's question, asked somewhere
+ * else.
+ */
 export function formatModelNumber(modelNumber: string | null | undefined): string {
-    if (!hasModelAnswer(modelNumber)) return "—";
+    if (!hasModelAnswer(modelNumber)) return NO_MODEL_VALUE;
     const trimmed = modelNumber!.trim();
-    return trimmed.toLowerCase() === NO_MODEL_VALUE ? "no model marking" : trimmed;
+    return trimmed.toLowerCase() === NO_MODEL_VALUE ? NO_MODEL_VALUE : trimmed;
 }
