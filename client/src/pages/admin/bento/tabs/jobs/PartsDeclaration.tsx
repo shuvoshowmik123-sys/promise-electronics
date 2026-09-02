@@ -441,7 +441,7 @@ export function PartsDeclaration({
          * scrollbar appears to get them back. QA measured the Save button at
          * x=3640 in a 1440px viewport, unreachable by mouse or wheel.
          */
-        <div className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-[#f8fafc]">
+        <div className="flex h-auto max-h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-[#f8fafc] md:h-full">
             {/* Header */}
             <div className="flex-none border-b border-slate-100/80 bg-[#f8fafc] px-3 pb-2 pt-2 md:px-4">
                 <div className="flex items-start justify-between gap-2">
@@ -698,7 +698,7 @@ export function PartsDeclaration({
               * has to clear the home indicator — not the seven rem it used to
               * reserve for a dock floating above it.
               */}
-            <div className="flex-none border-t border-slate-200 bg-white px-3 pt-2.5 pb-[calc(0.75rem+env(safe-area-inset-bottom))] md:px-4 md:pb-3">
+            <div className="flex-none border-t border-slate-200 bg-white px-3 pt-2.5 pb-3 md:px-4">
                 <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
                         <span className={LABEL}>Total</span>

@@ -1742,7 +1742,25 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
                   * PartsDeclaration draws its own, sized for a thumb, and the
                   * two rendered on top of each other as a doubled ✕.
                   */}
-                <DialogContent className="max-w-none w-screen h-[100dvh] p-0 gap-0 rounded-none border-0 md:h-[85vh] md:w-[92vw] md:max-w-4xl md:rounded-2xl overflow-hidden [&>button]:hidden">
+                {/*
+                  * Sized by its contents, not by the viewport.
+                  *
+                  * This was h-[100dvh]: a fixed full-screen box whatever it had
+                  * to show. Three releases were spent rearranging the children
+                  * to get rid of a blank area, and each one only chose a new
+                  * place for it — the middle, then under the declared list, then
+                  * split around a centred message. None of them could remove it,
+                  * because the surplus was not made by the children. A container
+                  * pinned to the screen height with four short rows of content
+                  * has around seven hundred pixels that must go somewhere, and
+                  * flex rules only decide where.
+                  *
+                  * h-auto with a ceiling ends it at the source: short content
+                  * gives a short sheet, and a long parts list grows to 92dvh and
+                  * scrolls inside. Desktop keeps its fixed 85vh, where a stable
+                  * two-column height is wanted and there is no void to begin with.
+                  */}
+                <DialogContent className="w-[calc(100vw-1.5rem)] max-w-none h-auto max-h-[92dvh] p-0 gap-0 rounded-2xl border-0 md:h-[85vh] md:w-[92vw] md:max-w-4xl overflow-hidden [&>button]:hidden">
                     <DialogTitle className="sr-only">Parts used</DialogTitle>
                     {selectedJob && (
                         <Suspense fallback={null}>
