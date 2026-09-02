@@ -256,7 +256,7 @@ export const jobTicketsApi = {
             method: "POST",
             body: JSON.stringify(payload),
         }),
-    advanceStatus: (id: string, body?: { testingConfirmed?: boolean }) =>
+    advanceStatus: (id: string, body?: { testingConfirmed?: boolean; partsOverride?: boolean }) =>
         fetchApi<JobTicket>(`/job-tickets/${id}/advance-status`, {
             method: "POST",
             body: body ? JSON.stringify(body) : undefined,

@@ -50,6 +50,7 @@ function parseProductLines(raw: unknown): ProductLineItem[] {
 }
 import { getJobSkillRules, hasAnySkill, type TechUser } from "@/components/admin/TechnicianPicker";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { ApiError } from "@/lib/api/httpClient";
 import { MobileBottomSheetFrame, MobileBottomSheetHandle } from "@/components/ui/mobile-bottom-sheet";
 import { useLocation } from "wouter";
 import { buildNavigateAdminTabPath } from "@/lib/admin-workspace-routing";
@@ -629,12 +630,49 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
     });
 
     const advanceStatusMutation = useMutation({
-        mutationFn: (id: string) => jobTicketsApi.advanceStatus(id),
+        mutationFn: ({ id, partsOverride }: { id: string; partsOverride?: boolean }) =>
+            jobTicketsApi.advanceStatus(id, partsOverride ? { partsOverride: true } : undefined),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["jobTickets"] });
             setIsAdvanceDialogOpen(false);
             toast.success("Job advanced to next stage successfully");
-        }
+        },
+        /**
+         * This mutation had no error handler at all, so every refusal from the
+         * server vanished — the dialog simply stayed open and nothing said why.
+         * That was survivable while the only refusals were rare; it is not
+         * survivable now that closing a job can be refused for a reason the
+         * person can fix in two taps.
+         */
+        onError: (error: Error) => {
+            const code = (error as ApiError)?.code;
+
+            if (code === "PARTS_NOT_DECLARED") {
+                const mayOverride =
+                    user?.role === "Super Admin" || user?.role === "Manager";
+
+                /**
+                 * The refusal becomes the next step rather than a wall.
+                 *
+                 * Being told "declare the parts first" and left on the same
+                 * screen is how a gate turns into people avoiding the system.
+                 * The declaration sheet opens on the job that was refused, so
+                 * the answer is one tap away — including "nothing was used",
+                 * which is the true answer most of the time.
+                 */
+                setIsAdvanceDialogOpen(false);
+                setIsPartsDeclarationOpen(true);
+
+                toast.error(
+                    mayOverride
+                        ? "Say which parts this used before completing. If none, record that — or close anyway from the parts screen."
+                        : "Say which parts this used before completing it. If none were used, record that — it takes one tap.",
+                );
+                return;
+            }
+
+            toast.error(error.message || "Could not advance this job");
+        },
     });
 
     const outcomeMutation = useMutation({
@@ -1635,6 +1673,35 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
                             />
                         </Suspense>
                     )}
+                    {/*
+                      * The way through, for the person allowed to take it.
+                      *
+                      * A technician can be off shift with a customer waiting at
+                      * the counter. A gate with no way through does not produce
+                      * declarations; it produces people closing jobs somewhere
+                      * else, or not closing them at all. This records the
+                      * exception under a name instead — which is what makes it
+                      * countable, and what makes the gate survivable.
+                      *
+                      * Deliberately plain and last: it should be the thing you
+                      * reach for when the right answer is not available, not
+                      * the thing you notice first.
+                      */}
+                    {selectedJob && (user?.role === "Super Admin" || user?.role === "Manager") && (
+                        <div className="border-t border-slate-200 bg-slate-50 px-4 py-3">
+                            <button
+                                type="button"
+                                disabled={advanceStatusMutation.isPending}
+                                onClick={() => {
+                                    setIsPartsDeclarationOpen(false);
+                                    advanceStatusMutation.mutate({ id: selectedJob.id, partsOverride: true });
+                                }}
+                                className="w-full rounded-lg border border-slate-300 bg-white py-2.5 text-[13px] font-semibold text-slate-600 transition-colors hover:bg-slate-100 disabled:opacity-50"
+                            >
+                                Complete without declaring — recorded against your name
+                            </button>
+                        </div>
+                    )}
                 </DialogContent>
             </Dialog>
 
@@ -1666,7 +1733,7 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
                     onOpenChange={setIsAdvanceDialogOpen}
                     currentStatus={selectedJob?.status || "Pending"}
                     onConfirm={() => {
-                        if (selectedJob) advanceStatusMutation.mutate(selectedJob.id);
+                        if (selectedJob) advanceStatusMutation.mutate({ id: selectedJob.id });
                     }}
                     onSetOutcome={(outcome, reason) => {
                         if (selectedJob) outcomeMutation.mutate({ id: selectedJob.id, outcome, reason });

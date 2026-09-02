@@ -17,7 +17,7 @@ import { publishAdminNotificationEvent, publishJobTicketEvent } from '../service
 import { logModelCase } from '../brain/kg.service.js';
 import { bindCustomerToJob, recordJobClosed } from '../services/canonical-customer.service.js';
 import { db } from '../db.js';
-import { localPurchases, jobStockDeductions } from '../../shared/schema.js';
+import { localPurchases } from '../../shared/schema.js';
 import { eq, sql } from 'drizzle-orm';
 import {
     transitionJobStatus,
@@ -582,12 +582,30 @@ router.post('/api/job-tickets/:id/advance-status', requireAdminAuth, requireGran
              * as easy as a full one — otherwise people invent a part to make the
              * prompt go away, which is worse than the silence it replaced.
              */
-            const declaredRows = await db
-                .select()
-                .from(jobStockDeductions)
-                .where(eq(jobStockDeductions.jobTicketId, jobId))
-                .limit(1);
-            const declared = declaredRows.length > 0 || !!(job as any).partsDeclaredAt;
+            /**
+             * product_lines is where a declaration actually lands.
+             *
+             * job_stock_deductions looked like the obvious thing to check and is
+             * the wrong one: it records stock movement, is written only when a
+             * declared part matches a catalogue item with stock to take, and
+             * holds 5 rows. The declaration screen saves to product_lines, which
+             * is what jobNeedsPartsDeclaration reads and what the nightly nudge
+             * chases. Gating on the deductions table would have refused to close
+             * jobs whose parts were properly declared — a block with no way
+             * through, on the screen people use most.
+             */
+            const declaredLines = (() => {
+                const raw = (job as any).productLines;
+                if (typeof raw !== "string" || !raw.trim()) return 0;
+                try {
+                    const parsed = JSON.parse(raw);
+                    return Array.isArray(parsed) ? parsed.length : 0;
+                } catch {
+                    return 0;
+                }
+            })();
+
+            const declared = declaredLines > 0 || !!(job as any).partsDeclaredAt;
 
             if (!declared) {
                 /**
