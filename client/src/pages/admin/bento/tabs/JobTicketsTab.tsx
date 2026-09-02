@@ -55,6 +55,7 @@ import { MobileBottomSheetFrame, MobileBottomSheetHandle } from "@/components/ui
 import { useLocation } from "wouter";
 import { buildNavigateAdminTabPath } from "@/lib/admin-workspace-routing";
 import { readTvBrands, readTvSizes } from "@shared/tv-options";
+import { readPartTypes } from "@shared/part-types";
 
 type JobGroupKey = "new" | "repairing" | "waiting-parts" | "decision" | "ready" | "delivered" | "all";
 
@@ -380,6 +381,19 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
         retry: false,
     });
 
+    /**
+     * The part vocabulary offered when declaring a part.
+     *
+     * readPartTypes falls back to the shipped list when Settings cannot be
+     * read, which is what a technician gets: the Settings route needs a
+     * privilege their role does not hold. That degrades to a sensible list
+     * rather than an empty picker, but a shop that has renamed these in
+     * Settings will not see its own words here for those users. Fixing that
+     * properly means the same treatment inventory just got - a narrow
+     * read-only route - and is left as a decision rather than assumed.
+     */
+    const partTypeOptions = useMemo(() => readPartTypes(settings as any), [settings]);
+
     const partsInventory = useMemo(
         () => ((partsInventoryRaw as any[]) ?? [])
             .filter((item) => (item.itemType ?? "product") !== "service")
@@ -421,13 +435,23 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
     };
 
     const savePartsMutation = useMutation({
-        mutationFn: (lines: ProductLineItem[]) => {
+        /*
+         * Parts and the quote are written together.
+         *
+         * They describe one job and were being recorded in two places at two
+         * times, which is how a job ends up with a parts list and no price
+         * against it. estimatedCost is only sent when a number was actually
+         * entered - blank leaves whatever the job already carries, so opening
+         * this screen and saving parts cannot erase a quote taken at intake.
+         */
+        mutationFn: ({ lines, quotedAmount }: { lines: ProductLineItem[]; quotedAmount: number | null }) => {
             if (!selectedJob) throw new Error("No job selected");
             return jobTicketsApi.update(selectedJob.id, {
                 productLines: JSON.stringify(lines),
+                ...(quotedAmount != null ? { estimatedCost: quotedAmount } : {}),
             } as any);
         },
-        onSuccess: (_data, lines) => {
+        onSuccess: (_data, { lines }) => {
             queryClient.invalidateQueries({ queryKey: ["jobTickets"] });
             // Stock moves as a side effect of this save, so the catalogue the
             // next declaration reads must not be stale.
@@ -1776,8 +1800,11 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
                                 jobLabel={`${getSafeJobDisplayRef(selectedJob) || selectedJob.id} · ${(selectedJob as any).device ?? "Repair"}`}
                                 initialLines={parseProductLines((selectedJob as any).productLines)}
                                 inventory={partsInventory}
+                                partTypes={partTypeOptions}
+                                initialQuote={(selectedJob as any).estimatedCost ?? null}
+                                canSeeMargin={isSuperAdmin || user?.role === "Manager"}
                                 isSaving={savePartsMutation.isPending}
-                                onSave={(lines) => savePartsMutation.mutate(lines)}
+                                onSave={(lines, quotedAmount) => savePartsMutation.mutate({ lines, quotedAmount })}
                                 onCancel={() => setIsPartsDeclarationOpen(false)}
                                 footerAction={
                                     /*

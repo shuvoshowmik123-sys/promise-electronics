@@ -3,7 +3,7 @@ import {
     AlertCircle, Check, Minus, Package, PackagePlus, Plus, Search, Store, Trash2, X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { formatModelNumber } from "@shared/part-types";
+import { formatModelNumber, requiresModelNumber, hasModelAnswer, NO_MODEL_VALUE } from "@shared/part-types";
 
 /**
  * Declaring which parts a repair actually consumed.
@@ -77,7 +77,24 @@ export interface PartsDeclarationProps {
     initialLines: ProductLineItem[];
     inventory: PartsDeclarationInventoryItem[];
     isSaving: boolean;
-    onSave: (lines: ProductLineItem[]) => void;
+    /**
+     * The part vocabulary, from Settings.
+     *
+     * Passed in rather than read here so this stays a presentation component,
+     * and so the caller decides what a reader who cannot fetch Settings sees.
+     */
+    partTypes: string[];
+    /** What the customer was quoted, if anything has been recorded yet. */
+    initialQuote?: number | null;
+    /**
+     * Whether to show what the job makes.
+     *
+     * The quote itself is visible to whoever declares - a technician usually
+     * gave it - but the subtraction against parts is the shop's margin, which
+     * follows the same rule as cost prices everywhere else in this system.
+     */
+    canSeeMargin?: boolean;
+    onSave: (lines: ProductLineItem[], quotedAmount: number | null) => void;
     onCancel: () => void;
     /**
      * An extra action for the footer, e.g. a Manager completing without
@@ -146,6 +163,9 @@ export function PartsDeclaration({
     initialLines,
     inventory,
     isSaving,
+    partTypes,
+    initialQuote,
+    canSeeMargin = false,
     onSave,
     onCancel,
     footerAction,
@@ -172,8 +192,31 @@ export function PartsDeclaration({
             window.dispatchEvent(new CustomEvent("admin:mobile-chrome", { detail: { hidden: false } }));
         };
     }, []);
-    const [sourcedName, setSourcedName] = useState("");
+    /*
+     * A sourced part is described the way the catalogue describes one.
+     *
+     * This used to be a single free-text "Part name". Two people typing the
+     * same board produced "power board", "Power Bd" and "PSU", none of which
+     * match each other or anything on the shelf, so a part fitted last month
+     * cannot be found when the same set comes back. Type comes from the shop's
+     * own list and the model number identifies which one it actually is - the
+     * pair a warranty claim is answered with.
+     */
+    const [sourcedType, setSourcedType] = useState("");
+    const [sourcedModel, setSourcedModel] = useState("");
     const [sourcedPrice, setSourcedPrice] = useState("");
+
+    /**
+     * What the customer was told the repair would cost.
+     *
+     * Kept on this screen because this is the moment the two numbers are both
+     * known. Declaring parts without it records what the job consumed and not
+     * what it earns, which is the same half-record the parts gate was built to
+     * stop.
+     */
+    const [quote, setQuote] = useState<string>(
+        initialQuote != null && Number.isFinite(initialQuote) ? String(initialQuote) : "",
+    );
     const [showErrors, setShowErrors] = useState(false);
     const searchRef = useRef<HTMLInputElement>(null);
 
@@ -225,16 +268,56 @@ export function PartsDeclaration({
         searchRef.current?.focus();
     };
 
+    /**
+     * Complete enough to be worth recording.
+     *
+     * The model is demanded only for the types where it identifies the part
+     * rather than describes it, and "n/a" satisfies it - a salvaged board with
+     * no legible marking is a real answer, and refusing it only teaches people
+     * to invent one.
+     */
+    const sourcedModelNeeded = requiresModelNumber(sourcedType);
+    const sourcedPriceValue = Number(sourcedPrice);
+    const sourcedReady =
+        Boolean(sourcedType)
+        && Number.isFinite(sourcedPriceValue)
+        && sourcedPrice.trim() !== ""
+        && sourcedPriceValue >= 0
+        && (!sourcedModelNeeded || hasModelAnswer(sourcedModel));
+
+    /**
+     * The quote as a number, or null for "not recorded".
+     *
+     * Blank is not zero. A job nobody has quoted and a job quoted at nothing are
+     * different facts, and storing the first as the second would make every
+     * unquoted repair look like a giveaway in any report that sums this.
+     */
+    const quotedAmount = (): number | null => {
+        const trimmed = quote.trim();
+        if (trimmed === "") return null;
+        const n = Number(trimmed);
+        return Number.isFinite(n) && n >= 0 ? n : null;
+    };
+
     const addSourced = () => {
-        const name = sourcedName.trim();
-        const price = Number(sourcedPrice);
-        if (!name || !Number.isFinite(price) || price < 0) return;
+        if (!sourcedReady) return;
+        const model = sourcedModel.trim();
+        /*
+         * name stays populated because every list, receipt and warranty lookup
+         * downstream reads it. It is composed here rather than typed, so the
+         * same part is written the same way every time.
+         */
+        const name = model && model.toLowerCase() !== NO_MODEL_VALUE
+            ? `${sourcedType} ${model}`
+            : sourcedType;
         setLines((prev) => [...prev, {
             id: newId(),
             inventoryItemId: "",
             name,
+            partType: sourcedType,
+            modelNumber: model || undefined,
             quantity: 1,
-            unitPrice: price,
+            unitPrice: sourcedPriceValue,
             source: "outsourced",
             /*
              * No purchase note is written.
@@ -251,7 +334,8 @@ export function PartsDeclaration({
              */
         }]);
         setSourcedOpen(false);
-        setSourcedName("");
+        setSourcedType("");
+        setSourcedModel("");
         setSourcedPrice("");
         setQuery("");
         searchRef.current?.focus();
@@ -288,11 +372,13 @@ export function PartsDeclaration({
             setShowErrors(true);
             return;
         }
-        onSave(lines);
+        onSave(lines, quotedAmount());
     };
 
     const openSourcedForm = () => {
-        setSourcedName(trimmedQuery);
+        setSourcedType("");
+        // A typed search is nearly always a model number, so it carries over.
+        setSourcedModel(trimmedQuery);
         setSourcedPrice("");
         setSourcedOpen(true);
     };
@@ -437,6 +523,138 @@ export function PartsDeclaration({
             </div>
         );
     };
+
+    /*
+     * Adding a part is its own step, not a card wedged into the list.
+     *
+     * It used to render inside the catalogue's scroll area. Open the keyboard
+     * there and three things compete for what is left of the screen - the
+     * search box above, the declared list below, and the form itself - inside a
+     * sheet that has just lost half its height to the keyboard. Everything is
+     * squeezed, the field being typed into is the smallest thing on screen, and
+     * a nested scroller has to be fought to reach the price.
+     *
+     * A step owns the whole sheet. The keyboard takes its space from one
+     * scrolling column with nothing else in it, which is what every native form
+     * does, and there is room to make the controls thumb-sized rather than
+     * fitting them into a gap.
+     */
+    if (sourcedOpen) {
+        return (
+            <div className="flex h-auto max-h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-[#f8fafc] md:h-full">
+                <div aria-hidden className="flex flex-none justify-center pt-2.5 pb-1 md:hidden">
+                    <span className="h-1 w-9 rounded-full bg-slate-300" />
+                </div>
+
+                <div className="flex flex-none items-center gap-2.5 border-b border-slate-200 bg-white px-3 py-2.5 md:px-4">
+                    <span className={cn("flex h-9 w-9 items-center justify-center rounded-xl border", toneClasses.violet)}>
+                        <Store className="h-4 w-4" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                        <span className={LABEL}>Add a part</span>
+                        <p className="truncate text-[15px] font-bold text-slate-950 md:text-[13px]">Not in stock</p>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => setSourcedOpen(false)}
+                        aria-label="Back to parts"
+                        className="flex h-11 w-11 flex-none items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition-transform active:scale-[0.97]"
+                    >
+                        <X className="h-4 w-4" />
+                    </button>
+                </div>
+
+                {/*
+                  * pb-24 is not decoration. The keyboard covers the bottom of
+                  * the sheet, and without slack under the last field the price
+                  * sits behind it with nothing left to scroll.
+                  */}
+                <div className="min-h-0 flex-1 space-y-3.5 overflow-y-auto overscroll-contain px-3 py-3.5 pb-24 [-webkit-overflow-scrolling:touch] md:px-4 md:pb-4">
+                    <label className="block">
+                        <span className={LABEL}>Part type</span>
+                        <select
+                            value={sourcedType}
+                            onChange={(e) => setSourcedType(e.target.value)}
+                            className={cn(INPUT, "mt-1.5 h-12 md:h-9")}
+                        >
+                            <option value="">Choose a part type</option>
+                            {partTypes.map((t) => (
+                                <option key={t} value={t}>{t}</option>
+                            ))}
+                        </select>
+                    </label>
+
+                    <div className="block">
+                        <span className={LABEL}>
+                            Model number{sourcedModelNeeded ? "" : " (optional)"}
+                        </span>
+                        <input
+                            type="text"
+                            value={sourcedModel}
+                            onChange={(e) => setSourcedModel(e.target.value)}
+                            placeholder={sourcedModelNeeded ? "As printed on the part" : "If the part carries one"}
+                            className={cn(INPUT, "mt-1.5 h-12 md:h-9")}
+                        />
+                        {/*
+                          * The honest way past a required field.
+                          *
+                          * A salvaged board with no legible marking has no model
+                          * number, and a field that will not accept that teaches
+                          * people to type anything to get through - which is
+                          * worse than an admitted gap, because invented data
+                          * cannot be told apart from the real thing later.
+                          */}
+                        <button
+                            type="button"
+                            onClick={() => setSourcedModel(NO_MODEL_VALUE)}
+                            className="mt-2 rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-[12px] font-bold text-slate-500 transition-transform active:scale-[0.97]"
+                        >
+                            No marking on the part
+                        </button>
+                        {sourcedModelNeeded && !hasModelAnswer(sourcedModel) && (
+                            <p className="mt-1.5 flex items-center gap-1 text-[12px] font-medium text-amber-700 md:text-[10px]">
+                                <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                                A {sourcedType.toLowerCase()} is identified by its model number.
+                            </p>
+                        )}
+                    </div>
+
+                    <label className="block">
+                        <span className={LABEL}>Unit price</span>
+                        <input
+                            type="text"
+                            inputMode="decimal"
+                            value={sourcedPrice}
+                            onChange={(e) => setSourcedPrice(e.target.value)}
+                            placeholder="0"
+                            className={cn(INPUT, "mt-1.5 h-12 md:h-9")}
+                        />
+                    </label>
+                </div>
+
+                <div className="flex-none border-t border-slate-200 bg-white px-3 py-2.5 md:px-4">
+                    <div className="grid grid-cols-2 gap-2">
+                        <button
+                            type="button"
+                            onClick={() => setSourcedOpen(false)}
+                            className="h-12 rounded-xl border border-slate-200 bg-white text-[13px] font-bold text-slate-500 transition-transform active:scale-[0.97] md:h-10 md:text-[11px]"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            type="button"
+                            onClick={addSourced}
+                            disabled={!sourcedReady}
+                            className="flex h-12 items-center justify-center gap-1 rounded-xl bg-violet-600 text-[13px] font-bold text-white shadow-sm transition-transform active:scale-[0.97] disabled:opacity-40 md:h-10 md:text-[11px]"
+                        >
+                            <Plus className="h-4 w-4" />
+                            Add part
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     return (
         /**
@@ -594,40 +812,7 @@ export function PartsDeclaration({
                                             : "Search to find a part, or add one that is not in stock."}
                                     </p>
                                 </div>
-                                {sourcedOpen ? (
-                                    <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-                                        <div className="flex items-center gap-2">
-                                            <span className={cn("flex h-8 w-8 items-center justify-center rounded-xl border", toneClasses.violet)}>
-                                                <Store className="h-4 w-4" />
-                                            </span>
-                                            <p className="text-[15px] font-bold text-slate-950 md:text-[13px]">New part</p>
-                                        </div>
-                                        <div className="mt-2.5 space-y-2">
-                                            <label className="block">
-                                                <span className={LABEL}>Part name</span>
-                                                <input type="text" value={sourcedName} onChange={(e) => setSourcedName(e.target.value)} className={cn(INPUT, "mt-1")} />
-                                            </label>
-                                            <label className="block">
-                                                <span className={LABEL}>Unit price</span>
-                                                <input type="text" inputMode="decimal" value={sourcedPrice} onChange={(e) => setSourcedPrice(e.target.value)} placeholder="0" className={cn(INPUT, "mt-1")} />
-                                            </label>
-                                        </div>
-                                        <div className="mt-2.5 grid grid-cols-2 gap-2">
-                                            <button type="button" onClick={() => setSourcedOpen(false)} className="h-12 rounded-xl border border-slate-200 bg-white text-[13px] font-bold text-slate-500 transition-transform active:scale-[0.97] md:h-10 md:text-[11px]">
-                                                Cancel
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={addSourced}
-                                                disabled={!sourcedName.trim() || sourcedPrice.trim() === ""}
-                                                className="flex h-12 items-center justify-center gap-1 rounded-xl bg-violet-600 text-[13px] font-bold text-white shadow-sm transition-transform active:scale-[0.97] disabled:opacity-40 md:h-10 md:text-[11px]"
-                                            >
-                                                <Plus className="h-3.5 w-3.5" />
-                                                Add part
-                                            </button>
-                                        </div>
-                                    </div>
-                                ) : (
+                                {
                                     /*
                                       * Offered whether or not anything was typed.
                                       *
@@ -659,7 +844,7 @@ export function PartsDeclaration({
                                             </span>
                                         </span>
                                     </button>
-                                )}
+                                }
                             </div>
                         ) : (
                             results.map((item) => <ResultRow key={item.id} item={item} />)
@@ -735,16 +920,55 @@ export function PartsDeclaration({
               * reserve for a dock floating above it.
               */}
             <div className="flex-none border-t border-slate-200 bg-white px-3 pt-2.5 pb-3 md:px-4">
+                {/*
+                  * What the customer was quoted, entered where both numbers are
+                  * known.
+                  *
+                  * The screen recorded what a repair consumed and never what it
+                  * was sold for, so the two halves of the same job were written
+                  * in different places at different times - and the second half
+                  * usually was not written at all. A parts total on its own
+                  * cannot answer whether the work was worth doing.
+                  *
+                  * Its own row above the actions, not squeezed beside them: it
+                  * is a number to be typed, and a keyboard opening under a
+                  * cramped field is what made this screen unusable before.
+                  */}
+                <label className="mb-2.5 flex items-center gap-2.5 rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-2">
+                    <span className={cn(LABEL, "flex-none")}>Quoted</span>
+                    <input
+                        type="text"
+                        inputMode="decimal"
+                        value={quote}
+                        onChange={(e) => setQuote(e.target.value)}
+                        placeholder="Not recorded"
+                        className="h-9 min-w-0 flex-1 border-0 bg-transparent text-right text-[15px] font-black tabular-nums text-slate-950 placeholder:text-[13px] placeholder:font-medium placeholder:text-slate-400 focus:outline-none md:text-[13px]"
+                    />
+                </label>
                 <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
                         <span className={LABEL}>Total</span>
                         <p className="text-lg font-black tabular-nums text-slate-950">{money(total)}</p>
+                        {/*
+                          * The subtraction is the shop's margin, so it follows
+                          * the same rule as cost prices: managers and above.
+                          * A technician sees both numbers they are responsible
+                          * for and is not handed the business's.
+                          */}
+                        {canSeeMargin && quotedAmount() != null && (
+                            <p className={cn(
+                                "text-[12px] font-bold tabular-nums md:text-[10px]",
+                                (quotedAmount() as number) - total < 0 ? "text-rose-600" : "text-emerald-700",
+                            )}>
+                                {money((quotedAmount() as number) - total)} after parts
+                            </p>
+                        )}
                     </div>
                     <div className="flex shrink-0 items-center gap-2">
                         {lines.length === 0 ? (
                             <button
                                 type="button"
-                                onClick={() => onSave([])}
+                                onClick={() => onSave([], quotedAmount())}
                                 disabled={isSaving}
                                 className="flex h-11 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-[12px] font-bold text-slate-600 active:scale-[0.98] disabled:opacity-50"
                             >
