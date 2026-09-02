@@ -330,6 +330,18 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
                 id: item.id,
                 name: item.name,
                 category: item.category ?? undefined,
+                /**
+                 * Carried through, or none of the rest matters.
+                 *
+                 * This mapping silently drops anything not named here, so the
+                 * declaration screen could only ever show "43 inch panel" no
+                 * matter what the catalogue held — the columns would fill in the
+                 * database and stay empty on every job. A field added to
+                 * inventory and forgotten at this line is a field that does not
+                 * exist as far as the repair is concerned.
+                 */
+                modelNumber: item.modelNumber ?? undefined,
+                partType: item.partType ?? undefined,
                 price: item.price ?? 0,
                 stock: item.stock ?? undefined,
                 isSerialized: Boolean(item.isSerialized),

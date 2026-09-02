@@ -1,4 +1,4 @@
-import { useState, useEffect, lazy, Suspense } from "react";
+import { useState, useEffect, lazy, Suspense, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
@@ -40,6 +40,12 @@ import {
     SheetFooter,
 } from "@/components/ui/sheet";
 import { inventoryApi, settingsApi } from "@/lib/api";
+import {
+    readPartTypes,
+    requiresModelNumber,
+    hasModelAnswer,
+    NO_MODEL_VALUE,
+} from "@shared/part-types";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 const WastageModal = lazy(() => import("@/components/inventory/WastageModal").then(m => ({ default: m.WastageModal })));
@@ -97,6 +103,17 @@ export default function InventoryTab({ initialSearchQuery, initialItemId, onSear
         id: "",
         name: "",
         category: "",
+        /** What this is in repair terms — from Settings, not a hardcoded list. */
+        partType: "",
+        /**
+         * Which part it actually is. "n/a" is a real answer.
+         *
+         * Salvaged boards and unbranded backlight strips often carry no legible
+         * marking. Forcing a real-looking value where none exists does not
+         * produce data, it produces invented data — and nobody can tell that
+         * apart from the truth later.
+         */
+        modelNumber: "",
         description: "",
         itemType: "product",
         stock: 0,
@@ -143,6 +160,16 @@ export default function InventoryTab({ initialSearchQuery, initialItemId, onSear
         queryKey: ["settings"],
         queryFn: settingsApi.getAll,
     });
+
+    /**
+     * Part types from Settings, with the shipped list behind them.
+     *
+     * The same source the parts declaration and part requests read, so a shop
+     * that starts repairing soundbars adds "Soundbar board" once rather than
+     * finding three screens that each disagree — which is what happened to the
+     * television brands before they were unified.
+     */
+    const partTypeOptions = useMemo(() => readPartTypes(settings as any), [settings]);
 
     const getCurrencySymbol = () => {
         const currencySetting = settings.find(s => s.key === "currency_symbol");
@@ -215,6 +242,11 @@ export default function InventoryTab({ initialSearchQuery, initialItemId, onSear
             item.id,
             item.name,
             item.category,
+            // Someone standing at the shelf holding the old board searches by
+            // what is printed on it. Leaving the model out of the search made
+            // the field unfindable by the only string anybody knows.
+            (item as any).modelNumber,
+            (item as any).partType,
             item.description,
             item.features
         );
@@ -229,6 +261,11 @@ export default function InventoryTab({ initialSearchQuery, initialItemId, onSear
             item.id,
             item.name,
             item.category,
+            // Someone standing at the shelf holding the old board searches by
+            // what is printed on it. Leaving the model out of the search made
+            // the field unfindable by the only string anybody knows.
+            (item as any).modelNumber,
+            (item as any).partType,
             item.description,
             item.features
         );
@@ -344,6 +381,8 @@ export default function InventoryTab({ initialSearchQuery, initialItemId, onSear
             id: "",
             name: "",
             category: "",
+            partType: "",
+            modelNumber: "",
             description: "",
             itemType: "product",
             stock: 0,
@@ -421,6 +460,8 @@ export default function InventoryTab({ initialSearchQuery, initialItemId, onSear
             id: item.id,
             name: item.name,
             category: item.category,
+            partType: (item as any).partType || "",
+            modelNumber: (item as any).modelNumber || "",
             description: item.description || "",
             itemType: item.itemType || "product",
             stock: Number(item.stock),
@@ -474,6 +515,23 @@ export default function InventoryTab({ initialSearchQuery, initialItemId, onSear
             toast.error("Please enter a name for the item");
             return;
         }
+        /**
+         * Required for the types where a model identifies the part.
+         *
+         * "n/a" passes. That is the whole design: a field that cannot be left
+         * blank but can be answered honestly as absent. Blocking on a blank and
+         * accepting "n/a" produces a deliberate answer either way, which is
+         * what an empty column never was.
+         */
+        if (
+            formData.itemType !== "service" &&
+            requiresModelNumber(formData.partType) &&
+            !hasModelAnswer(formData.modelNumber)
+        ) {
+            toast.error(`A ${formData.partType} needs its model number. Write "n/a" if the part has no marking.`);
+            return;
+        }
+
         if (!formData.category) {
             toast.error("Please select a category");
             return;
@@ -483,6 +541,14 @@ export default function InventoryTab({ initialSearchQuery, initialItemId, onSear
         const parsedWarrantyDays = formData.warrantyDays ? parseInt(formData.warrantyDays.toString(), 10) : NaN;
         const dataWithImagesAndFeatures = {
             ...formData,
+            partType: formData.partType || null,
+            /**
+             * Stored trimmed, and "n/a" kept as written rather than turned into
+             * null. Null would mean "nobody answered"; "n/a" means "answered:
+             * this part has no marking". Those are different facts and only one
+             * of them is a gap worth chasing.
+             */
+            modelNumber: formData.modelNumber.trim() || null,
             price: parseFloat(formData.price.toString()),
             minPrice: formData.minPrice ? parseFloat(formData.minPrice.toString()) : null,
             maxPrice: formData.maxPrice ? parseFloat(formData.maxPrice.toString()) : null,
@@ -888,6 +954,67 @@ export default function InventoryTab({ initialSearchQuery, initialItemId, onSear
                                 </Select>
                             </div>
                         </div>
+
+                        {/*
+                          * What the part is, and which one.
+                          *
+                          * Only for stock, never for services — a service has no
+                          * model number and asking for one is noise on every
+                          * screen that sells labour.
+                          *
+                          * Part type is separate from Category above: Category
+                          * groups stock for browsing, this is the word a
+                          * technician says to a supplier. Both are needed and
+                          * neither substitutes for the other.
+                          */}
+                        {formData.itemType !== "service" && (
+                            <div className="grid gap-4 sm:grid-cols-2">
+                                <div className="space-y-2">
+                                    <Label>Part type</Label>
+                                    <Select
+                                        value={formData.partType}
+                                        onValueChange={(value) => setFormData({ ...formData, partType: value })}
+                                    >
+                                        <SelectTrigger className="bg-slate-50">
+                                            <SelectValue placeholder="Panel, Motherboard, …" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {partTypeOptions.map((type: string) => (
+                                                <SelectItem key={type} value={type}>{type}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>
+                                        Model number
+                                        {requiresModelNumber(formData.partType) && (
+                                            <span className="ml-1 text-rose-600">*</span>
+                                        )}
+                                    </Label>
+                                    <Input
+                                        placeholder='TX-43LB5000-PANEL, or "n/a"'
+                                        value={formData.modelNumber}
+                                        onChange={(e) => setFormData({ ...formData, modelNumber: e.target.value })}
+                                        className="bg-slate-50"
+                                    />
+                                    {requiresModelNumber(formData.partType) && (
+                                        <p className="text-[11px] leading-relaxed text-slate-500">
+                                            A {formData.partType.toLowerCase()} is identified by its model, not its
+                                            size. If the part carries no legible marking, write{" "}
+                                            <button
+                                                type="button"
+                                                onClick={() => setFormData({ ...formData, modelNumber: NO_MODEL_VALUE })}
+                                                className="font-bold text-slate-700 underline underline-offset-2"
+                                            >
+                                                n/a
+                                            </button>
+                                            {" "}— that is a real answer.
+                                        </p>
+                                    )}
+                                </div>
+                            </div>
+                        )}
 
                         {/* Basic Info */}
                         <div className="space-y-2">

@@ -3,6 +3,7 @@ import {
     AlertCircle, Check, Minus, Package, PackagePlus, Plus, Search, Store, Trash2, X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { formatModelNumber } from "@shared/part-types";
 
 /**
  * Declaring which parts a repair actually consumed.
@@ -39,6 +40,16 @@ export interface ProductLineItem {
     /** "" for a part sourced outside the catalogue. */
     inventoryItemId: string;
     name: string;
+    /**
+     * Copied onto the line, not looked up later.
+     *
+     * The catalogue row can be renamed, re-modelled or deleted years before
+     * anyone asks what was fitted to this television, and a warranty claim
+     * answered with a blank — or worse, with a corrected model number — is no
+     * answer. The line keeps what was true on the day.
+     */
+    modelNumber?: string;
+    partType?: string;
     quantity: number;
     unitPrice: number;
     isSerialized?: boolean;
@@ -51,6 +62,10 @@ export interface PartsDeclarationInventoryItem {
     id: string;
     name: string;
     category?: string;
+    /** Which part this actually is. Panels are not interchangeable by size. */
+    modelNumber?: string;
+    /** Panel, Motherboard, Android voice-control motherboard, … */
+    partType?: string;
     price: number | string;
     stock?: number;
     isSerialized?: boolean;
@@ -141,7 +156,10 @@ export function PartsDeclaration({
         return inventory.filter(
             (item) =>
                 item.name.toLowerCase().includes(loweredQuery) ||
-                (item.category ?? "").toLowerCase().includes(loweredQuery),
+                (item.category ?? "").toLowerCase().includes(loweredQuery) ||
+                // A technician searches by what is printed on the old board.
+                (item.modelNumber ?? "").toLowerCase().includes(loweredQuery) ||
+                (item.partType ?? "").toLowerCase().includes(loweredQuery),
         );
     }, [inventory, loweredQuery]);
 
@@ -164,6 +182,9 @@ export function PartsDeclaration({
                 id: newId(),
                 inventoryItemId: item.id,
                 name: item.name,
+                // Snapshotted onto the line, for the reason on the field itself.
+                modelNumber: item.modelNumber,
+                partType: item.partType,
                 quantity: 1,
                 unitPrice: Number(item.price) || 0,
                 isSerialized: item.isSerialized ?? false,
@@ -255,8 +276,22 @@ export function PartsDeclaration({
                 </span>
                 <span className="min-w-0 flex-1">
                     <span className="block truncate text-[13px] font-bold text-slate-950">{item.name}</span>
-                    {item.category && (
-                        <span className="block truncate text-[10px] font-medium text-slate-500">{item.category}</span>
+                    {/*
+                      * The model is what tells two boards apart, so it sits
+                      * under the name rather than behind a tap. The type is
+                      * shown beside it because "Panel" and "T-CON board" can
+                      * carry model numbers that look alike at a glance.
+                      */}
+                    {(item.modelNumber || item.partType || item.category) && (
+                        <span className="block truncate text-[10px] font-medium text-slate-500">
+                            {item.modelNumber && (
+                                <span className="font-bold text-slate-600">
+                                    {formatModelNumber(item.modelNumber)}
+                                </span>
+                            )}
+                            {item.modelNumber && (item.partType || item.category) && " · "}
+                            {item.partType || item.category}
+                        </span>
                     )}
                 </span>
                 <span className="flex shrink-0 flex-col items-end gap-1">
