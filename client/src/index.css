@@ -27,6 +27,63 @@ html.native-app-mode #root {
   touch-action: pan-x pan-y;
 }
 
+/*
+ * Things that stop this reading as a web page.
+ *
+ * Applied everywhere rather than behind a native check: none of it is wrong in
+ * a browser, and gating it would mean the phone and the desktop drift into
+ * behaving differently for no reason anybody could name later.
+ *
+ * ANDROID 9 — every property here predates it. tap-highlight is WebKit's from
+ * the beginning, overscroll-behavior is Chrome 63, touch-action is Chrome 36,
+ * -webkit-overflow-scrolling is older still. Nothing needs a fallback and
+ * nothing degrades badly: an engine that ignores one of these renders exactly
+ * what it renders today.
+ */
+
+/*
+ * The grey flash on every tap.
+ *
+ * It is the single clearest tell that a screen is a web page — no native
+ * control does it — and it fires on every button, card and list row.
+ */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/*
+ * Text selection off for chrome, on for content.
+ *
+ * A long press on a native button does nothing; on the web it selects the
+ * label and raises a copy bubble, which is how a technician holding a phone
+ * ends up staring at a selection they did not ask for. Inputs and real prose
+ * keep it, because reading a customer's address and copying a job number are
+ * things people genuinely do.
+ */
+button, [role="button"], nav, label, .select-none {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+input, textarea, [contenteditable="true"], p, span, td, h1, h2, h3 {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/*
+ * Scroll that stops where it should.
+ *
+ * Without containment, reaching the end of any inner list hands the gesture to
+ * the page behind it and the whole screen rubber-bands. Native lists simply
+ * stop. This is the difference people feel without being able to name it.
+ */
+.overflow-y-auto,
+.overflow-auto,
+.overflow-x-auto {
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
 /* 2. Define safe area variables (Notch and Home Bar) */
 :root {
   --safe-top: env(safe-area-inset-top);

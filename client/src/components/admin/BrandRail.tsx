@@ -35,6 +35,7 @@ import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, Check, Plus } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { hapticLight } from "@/lib/native-features";
 
 export type BrandRailProps = {
     /** The list from Settings → tv_brands. "Other"/"Custom" is dropped; this owns that. */
@@ -114,7 +115,7 @@ export function BrandRail({ brands, value, onChange, label = "Brand" }: BrandRai
                       */}
                     <button
                         type="button"
-                        onClick={() => { setCustom(false); onChange(""); }}
+                        onClick={() => { void hapticLight(); setCustom(false); onChange(""); }}
                         aria-label="Back to the brand list"
                         className="mr-2.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition-colors active:bg-slate-100"
                     >
@@ -161,7 +162,7 @@ export function BrandRail({ brands, value, onChange, label = "Brand" }: BrandRai
                                 key={brand}
                                 type="button"
                                 data-brand={brand}
-                                onClick={() => onChange(brand)}
+                                onClick={() => { void hapticLight(); onChange(brand); }}
                                 style={{ scrollSnapAlign: "center" }}
                                 className={cn(
                                     // mr-2.5 rather than a flex gap — see the note at the top.
@@ -182,7 +183,7 @@ export function BrandRail({ brands, value, onChange, label = "Brand" }: BrandRai
 
                     <button
                         type="button"
-                        onClick={() => { setCustom(true); onChange(""); }}
+                        onClick={() => { void hapticLight(); setCustom(true); onChange(""); }}
                         style={{ scrollSnapAlign: "center" }}
                         className="mr-2.5 flex h-11 shrink-0 items-center whitespace-nowrap rounded-full border border-dashed border-blue-300 bg-blue-50/50 px-5 text-[13px] font-bold text-blue-700 transition-all duration-200 active:scale-95"
                     >

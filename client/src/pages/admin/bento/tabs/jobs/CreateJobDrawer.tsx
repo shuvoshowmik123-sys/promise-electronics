@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { BrandRail } from "@/components/admin/BrandRail";
 import { cn } from "@/lib/utils";
+import { hapticLight } from "@/lib/native-features";
 import { DEFAULT_TV_BRANDS } from "@shared/tv-options";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
@@ -773,7 +774,7 @@ function PowerPills({ value, onChange }: { value: string; onChange: (v: string) 
                             type="button"
                             // Tapping the chosen one again clears it: the honest
                             // answer to "we did not check" is nothing, not a guess.
-                            onClick={() => onChange(active ? "" : state.value)}
+                            onClick={() => { void hapticLight(); onChange(active ? "" : state.value); }}
                             className={cn(
                                 // mr rather than a flex gap — Android 9 WebViews
                                 // below Chrome 84 ignore gap and stack these flush.
@@ -817,9 +818,10 @@ function ChipGroup({
                         <button
                             key={item}
                             type="button"
-                            onClick={() =>
-                                onChange(active ? selected.filter((v) => v !== item) : [...selected, item])
-                            }
+                            onClick={() => {
+                                void hapticLight();
+                                onChange(active ? selected.filter((v) => v !== item) : [...selected, item]);
+                            }}
                             className={cn(
                                 "mb-2 mr-2 h-10 rounded-full border px-4 text-[13px] font-semibold transition-all duration-200 active:scale-95",
                                 active

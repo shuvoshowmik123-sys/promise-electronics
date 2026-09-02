@@ -37,6 +37,7 @@ import { SyncConflictReview } from "@/components/admin/SyncConflictReview";
 import { ReminderBell } from "@/components/admin/ReminderBell";
 import { TeamChatPanel } from "@/components/admin/TeamChatPanel";
 import { AdminPwaInstallPrompt } from "@/components/admin/AdminPwaInstallPrompt";
+import { hapticLight } from "@/lib/native-features";
 import { AdminPushRegistrar } from "@/components/admin/AdminPushRegistrar";
 // TEMPORARY: answers connection-test pings. Delete with the test bench.
 import { PushConnectionResponder } from "@/components/admin/PushConnectionResponder";
@@ -924,7 +925,9 @@ export default function DesignConcept() {
                         ) : (
                             <button
                                 key={item.id}
-                                onClick={() => navigateAdminTab(item.id)}
+                                // The dock is the most-tapped control in the app;
+                                // a tap that answers is what makes it feel native.
+                                onClick={() => { void hapticLight(); navigateAdminTab(item.id); }}
                                 onPointerEnter={() => preloadTab(item.id)}
                                 onTouchStart={() => preloadTab(item.id)}
                                 className={cn(

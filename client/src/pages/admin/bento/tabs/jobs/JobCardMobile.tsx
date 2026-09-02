@@ -9,6 +9,7 @@ import { getSafeJobDisplayRef } from "@shared/job-display-utils";
 import { HighlightMatch } from "../../shared";
 import { ClientClassBadge } from "@/components/admin/ClientClassBadge";
 import { getPrimaryAction, getStatusVisual, mobileCardVariants } from "./jobActions";
+import { hapticMedium } from "@/lib/native-features";
 import { getJobModelDisplay } from "./jobIdentityDisplay";
 import { formatScreenSize } from "@shared/tv-options";
 
@@ -82,6 +83,12 @@ export function JobCardMobile({
 
     const handlePrimaryAction = (event: MouseEvent) => {
         event.stopPropagation();
+        /*
+         * Medium, not light. This is the button that moves a real repair to its
+         * next stage — a firmer answer than picking a brand, and the difference
+         * is felt without being thought about.
+         */
+        void hapticMedium();
         if (action.type === "edit") onEditJob(job);
         else if (action.type === "advance") onAdvanceStage(job);
         else if (action.type === "ngWorkflow") onOpenNgWorkflow(job);
