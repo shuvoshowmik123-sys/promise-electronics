@@ -92,7 +92,7 @@ const toneClasses: Record<Tone, string> = {
     slate: "border-slate-100 bg-slate-50 text-slate-700",
 };
 
-const LABEL = "text-[10px] font-bold uppercase tracking-wide text-slate-500";
+const LABEL = "text-[11px] font-bold uppercase tracking-wide text-slate-500 md:text-[10px]";
 const INPUT =
     "h-9 w-full rounded-xl border border-slate-200 bg-white px-2.5 text-[13px] font-bold text-slate-950 placeholder:font-medium placeholder:text-slate-400 focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500/20";
 
@@ -294,7 +294,7 @@ export function PartsDeclaration({
                     <Package className="h-4 w-4 text-slate-300" />
                 </span>
                 <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[13px] font-bold text-slate-950">{item.name}</span>
+                    <span className="block truncate text-[15px] font-bold text-slate-950 md:text-[13px]">{item.name}</span>
                     {/*
                       * The model is what tells two boards apart, so it sits
                       * under the name rather than behind a tap. The type is
@@ -302,7 +302,7 @@ export function PartsDeclaration({
                       * carry model numbers that look alike at a glance.
                       */}
                     {(item.modelNumber || item.partType || item.category) && (
-                        <span className="block truncate text-[10px] font-medium text-slate-500">
+                        <span className="block truncate text-[12px] font-medium text-slate-500 md:text-[10px]">
                             {item.modelNumber && (
                                 <span className="font-bold text-slate-600">
                                     {formatModelNumber(item.modelNumber)}
@@ -314,12 +314,12 @@ export function PartsDeclaration({
                     )}
                 </span>
                 <span className="flex shrink-0 flex-col items-end gap-1">
-                    <span className="text-[13px] font-black tabular-nums text-slate-950">
+                    <span className="text-[15px] font-black tabular-nums text-slate-950 md:text-[13px]">
                         {money(Number(item.price) || 0)}
                     </span>
                     {badge && (
                         <span className={cn(
-                            "inline-flex items-center rounded-full border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide",
+                            "inline-flex items-center rounded-full border px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wide md:text-[10px] md:text-[9px]",
                             toneClasses[badge.tone],
                         )}>
                             {badge.label}
@@ -335,19 +335,19 @@ export function PartsDeclaration({
         const incomplete = showErrors && lineIsIncomplete(line);
         return (
             <div className={cn(
-                "rounded-xl border bg-white p-2.5 shadow-sm",
+                "rounded-xl border bg-white p-3 shadow-sm md:p-2.5",
                 incomplete ? "border-rose-200" : "border-slate-200",
             )}>
                 <div className="flex items-start gap-2">
                     <div className="min-w-0 flex-1">
-                        <p className="truncate text-[13px] font-bold text-slate-950">{line.name}</p>
+                        <p className="truncate text-[15px] font-bold text-slate-950 md:text-[13px]">{line.name}</p>
                         <div className="mt-0.5 flex items-center gap-1.5">
-                            <span className="text-[10px] font-medium text-slate-500 tabular-nums">
+                            <span className="text-[12px] font-medium text-slate-500 tabular-nums md:text-[10px]">
                                 {money(line.unitPrice)} each
                             </span>
                             {line.source === "outsourced" && (
                                 <span className={cn(
-                                    "inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide",
+                                    "inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wide md:text-[10px] md:text-[9px]",
                                     toneClasses.violet,
                                 )}>
                                     <Store className="h-3 w-3" />
@@ -356,7 +356,7 @@ export function PartsDeclaration({
                             )}
                         </div>
                     </div>
-                    <span className="shrink-0 text-[13px] font-black tabular-nums text-slate-950">
+                    <span className="shrink-0 text-[15px] font-black tabular-nums text-slate-950 md:text-[13px]">
                         {money(line.quantity * line.unitPrice)}
                     </span>
                 </div>
@@ -371,7 +371,7 @@ export function PartsDeclaration({
                         >
                             <Minus className="h-4 w-4" />
                         </button>
-                        <span className="w-9 text-center text-[13px] font-black tabular-nums text-slate-950">
+                        <span className="w-9 text-center text-[15px] font-black tabular-nums text-slate-950 md:text-[13px]">
                             {line.quantity}
                         </span>
                         <button
@@ -407,7 +407,7 @@ export function PartsDeclaration({
                             />
                         ))}
                         {incomplete && (
-                            <p className="flex items-center gap-1 text-[10px] font-bold text-rose-600">
+                            <p className="flex items-center gap-1 text-[12px] font-bold text-rose-600 md:text-[10px]">
                                 <AlertCircle className="h-3.5 w-3.5" />
                                 Every unit needs a serial before this can be saved.
                             </p>
@@ -493,8 +493,8 @@ export function PartsDeclaration({
                                     <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-100">
                                         <Package className="h-4 w-4 text-slate-400" />
                                     </span>
-                                    <p className="text-[13px] font-bold text-slate-950">Nothing stocked by that name</p>
-                                    <p className="text-[10px] font-medium text-slate-500">
+                                    <p className="text-[15px] font-bold text-slate-950 md:text-[13px]">Nothing stocked by that name</p>
+                                    <p className="text-[12px] font-medium text-slate-500 md:text-[10px]">
                                         If it was bought from a local vendor, add it as a sourced part.
                                     </p>
                                 </div>
@@ -504,7 +504,7 @@ export function PartsDeclaration({
                                             <span className={cn("flex h-8 w-8 items-center justify-center rounded-xl border", toneClasses.violet)}>
                                                 <Store className="h-4 w-4" />
                                             </span>
-                                            <p className="text-[13px] font-bold text-slate-950">Sourced part</p>
+                                            <p className="text-[15px] font-bold text-slate-950 md:text-[13px]">Sourced part</p>
                                         </div>
                                         <div className="mt-2.5 space-y-2">
                                             <label className="block">
@@ -572,7 +572,7 @@ export function PartsDeclaration({
                     <div className="flex flex-none items-center justify-between gap-2 px-3 pt-2 md:px-0 md:pt-0">
                         <span className={LABEL}>Declared ({lines.length})</span>
                         {incompleteCount > 0 && showErrors && (
-                            <span className={cn("rounded-full border px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide", toneClasses.rose)}>
+                            <span className={cn("rounded-full border px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide md:text-[10px] md:text-[9px]", toneClasses.rose)}>
                                 {incompleteCount} need serials
                             </span>
                         )}
@@ -581,8 +581,8 @@ export function PartsDeclaration({
                     <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto px-3 py-2 md:px-0">
                         {lines.length === 0 ? (
                             <div className="flex flex-col items-center gap-1.5 px-3 py-6 text-center">
-                                <p className="text-[13px] font-bold text-slate-950">Nothing added yet</p>
-                                <p className="text-[10px] font-medium text-slate-500">
+                                <p className="text-[15px] font-bold text-slate-950 md:text-[13px]">Nothing added yet</p>
+                                <p className="text-[12px] font-medium text-slate-500 md:text-[10px]">
                                     Search above, or record that nothing was used.
                                 </p>
                             </div>
