@@ -29,6 +29,20 @@ import { normalizePhone } from "../utils/phone.js";
 export type CleanupTarget = {
     phones?: string[];
     ticketNumbers?: string[];
+    /**
+     * Take the jobs with the profile.
+     *
+     * Off, a customer whose request became a job cannot be removed at all -
+     * which is correct for a live shop and useless for clearing demo records,
+     * because every realistic test customer has a job behind it.
+     *
+     * On, the jobs and their operational history go too. Money does not: a job
+     * carrying a bill, a payment, a refund or a commission stays a hard blocker
+     * whatever this is set to. Those rows are the shop's books, they are read
+     * by reports that must still add up next year, and no cleanup tool should
+     * be able to quietly change what the business earned.
+     */
+    includeWork?: boolean;
 };
 
 export type CleanupCustomer = {
@@ -64,10 +78,54 @@ export type CleanupPreview = {
         resetLinks: number;
         deviceTokens: number;
         customers: number;
+        jobs: number;
+        jobChildren: number;
+        orders: number;
     };
     blockers: CleanupBlocker[];
     safeToDelete: boolean;
 };
+
+/**
+ * Everything that hangs off a job and is not money.
+ *
+ * Deleted before the job itself. The financial tables are deliberately absent:
+ * bill_line_items, manual_payments, refunds, refund_allocations,
+ * commission_payouts, commission_assignments, local_purchases,
+ * pending_part_costs and pos_transaction_area_allocations reference jobs too,
+ * and if any of them hold a row this whole operation is refused instead. A
+ * cleanup that can erase what the shop earned is not a cleanup.
+ */
+const JOB_CHILD_TABLES = [
+    "job_ng_customer_decisions",
+    "job_ng_reports",
+    "job_extension_requests",
+    "job_stock_deductions",
+    "corporate_portal_urgencies",
+    "diagnosis_training_data",
+    "rollback_requests",
+    "reminders",
+    "quote_logs",
+    "warranty_sticker_scans",
+    "warranty_stickers",
+    "warranty_claims",
+    "wastage_logs",
+    "approval_requests",
+    "notifications",
+] as const;
+
+/** Tables whose presence means the books would change. Never deleted. */
+const JOB_MONEY_TABLES = [
+    "bill_line_items",
+    "manual_payments",
+    "refunds",
+    "refund_allocations",
+    "commission_payouts",
+    "commission_assignments",
+    "local_purchases",
+    "pending_part_costs",
+    "pos_transaction_area_allocations",
+] as const;
 
 function rows<T = any>(result: unknown): T[] {
     return ((result as any)?.rows ?? result ?? []) as T[];
@@ -96,6 +154,7 @@ export async function previewCleanup(target: CleanupTarget): Promise<CleanupPrev
             counts: {
                 serviceRequests: 0, serviceRequestEvents: 0, journeys: 0, journeyEvents: 0,
                 inquiries: 0, resetLinks: 0, deviceTokens: 0, customers: 0,
+                jobs: 0, jobChildren: 0, orders: 0,
             },
             blockers: [{ kind: "no_target", detail: "Give at least one phone number or ticket number." }],
             safeToDelete: false,
@@ -152,13 +211,64 @@ export async function previewCleanup(target: CleanupTarget): Promise<CleanupPrev
 
     const srIds = serviceRequests.map((s) => s.id);
 
+    /*
+     * The jobs this profile owns.
+     *
+     * Matched two ways because job_tickets has no customer id at all - it keeps
+     * the name and phone as text - so a job is only reachable through the
+     * normalised phone, or through the request it was converted from. Either
+     * alone misses rows: a job raised at the counter has no service request,
+     * and a converted request's job may carry a differently formatted number.
+     */
+    const jobIds = target.includeWork
+        ? rows<any>(await db.execute(sql`
+            SELECT id FROM job_tickets
+            WHERE right(regexp_replace(coalesce(customer_phone, ''), '[^0-9]', '', 'g'), 10)
+                    IN (${idList(normalisedPhones)})
+               OR customer_phone_normalized IN (${idList(normalisedPhones)})
+               OR id IN (${idList(serviceRequests.map((r) => r.convertedJobId).filter(Boolean) as string[])})
+        `)).map((r) => r.id as string)
+        : [];
+
     // ── Blockers: real work, not test junk.
     for (const sr of serviceRequests) {
-        if (sr.convertedJobId) {
+        if (sr.convertedJobId && !target.includeWork) {
             blockers.push({
                 kind: "converted_to_job",
-                detail: `${sr.ticketNumber ?? sr.id} was converted to a job ticket. Close the job first.`,
+                detail: `${sr.ticketNumber ?? sr.id} was converted to a job ticket. Close the job first, or tick "include jobs".`,
             });
+        }
+    }
+
+    /*
+     * Money is refused whatever mode this runs in.
+     *
+     * Checked per table so the message names the one that stopped it - "this
+     * job has a bill" and "this job has a commission payout" need different
+     * answers from whoever is holding the screen, and a single "it has
+     * financial records" tells them nothing about which.
+     */
+    let jobChildren = 0;
+    if (jobIds.length > 0) {
+        for (const table of JOB_MONEY_TABLES) {
+            const column = table === "local_purchases" ? "job_ticket_id" : "job_id";
+            const n = rows<any>(await db.execute(sql`
+                SELECT count(*)::int AS n FROM ${sql.identifier(table)}
+                WHERE ${sql.identifier(column)} IN (${idList(jobIds)})
+            `))[0]?.n ?? 0;
+            if (n > 0) {
+                blockers.push({
+                    kind: "has_money",
+                    detail: `${n} row(s) in ${table} belong to these jobs. Refusing — the books are not test data.`,
+                });
+            }
+        }
+        for (const table of JOB_CHILD_TABLES) {
+            const n = rows<any>(await db.execute(sql`
+                SELECT count(*)::int AS n FROM ${sql.identifier(table)}
+                WHERE job_id IN (${idList(jobIds)})
+            `))[0]?.n ?? 0;
+            jobChildren += n;
         }
     }
 
@@ -177,9 +287,15 @@ export async function previewCleanup(target: CleanupTarget): Promise<CleanupPrev
         SELECT count(*)::int AS n FROM orders WHERE customer_id IN (${idList(customerIds)})
     `))[0]?.n ?? 0;
     if (orders > 0) {
+        /*
+         * A shop order is a sale. It stays refused in both modes - includeWork
+         * covers repair work, not the till. If a demo customer has one, the
+         * order is the thing to remove first, deliberately, somewhere that
+         * records why.
+         */
         blockers.push({
             kind: "has_orders",
-            detail: `${orders} shop order(s) belong to these customers. Refusing.`,
+            detail: `${orders} shop order(s) belong to these customers. Refusing — a sale is not test data.`,
         });
     }
 
@@ -213,6 +329,9 @@ export async function previewCleanup(target: CleanupTarget): Promise<CleanupPrev
             SELECT count(*)::int AS n FROM device_tokens
             WHERE user_id IN (${idList(customerIds)})`),
         customers: customers.length,
+        jobs: jobIds.length,
+        jobChildren,
+        orders,
     };
 
     if (customers.length === 0 && serviceRequests.length === 0) {
@@ -249,6 +368,36 @@ export async function executeCleanup(target: CleanupTarget): Promise<CleanupResu
 
     const customerIds = preview.customers.map((c) => c.userId);
     const srIds = preview.serviceRequests.map((s) => s.id);
+    /*
+     * Resolved again from the same inputs rather than passed along, so the
+     * transaction deletes what the preview counted. If a job appeared between
+     * the two calls it is caught by the preview's own re-run at the top of this
+     * function, which refuses on any new blocker.
+     */
+    /*
+     * Resolved from the database rather than from the preview it returned.
+     *
+     * previewCleanup strips convertedJobId off the requests before handing them
+     * back - it is internal to the blocker check - so reading it here would
+     * silently drop every job that is only reachable through the request it
+     * came from, and delete fewer rows than the preview promised. Asking SQL
+     * the same question twice is the only way the two agree.
+     */
+    const execPhones = (target.phones ?? [])
+        .map((p) => normalizePhone(p))
+        .filter((p): p is string => Boolean(p));
+    const jobIds = target.includeWork
+        ? rows<any>(await db.execute(sql`
+            SELECT id FROM job_tickets
+            WHERE right(regexp_replace(coalesce(customer_phone, ''), '[^0-9]', '', 'g'), 10)
+                    IN (${idList(execPhones)})
+               OR customer_phone_normalized IN (${idList(execPhones)})
+               OR id IN (
+                    SELECT converted_job_id FROM service_requests
+                    WHERE id IN (${idList(srIds)}) AND converted_job_id IS NOT NULL
+                  )
+        `)).map((r) => r.id as string)
+        : [];
     const normalisedPhones = (target.phones ?? [])
         .map((p) => normalizePhone(p))
         .filter((p): p is string => Boolean(p));
@@ -265,6 +414,26 @@ export async function executeCleanup(target: CleanupTarget): Promise<CleanupResu
         await tx.execute(sql`DELETE FROM customer_repair_journey_events WHERE journey_id IN (${idList(journeyIds)})`);
         await tx.execute(sql`DELETE FROM customer_repair_journeys WHERE id IN (${idList(journeyIds)})`);
         await tx.execute(sql`DELETE FROM service_request_events WHERE service_request_id IN (${idList(srIds)})`);
+
+        /*
+         * Jobs and their operational history, before the requests that made
+         * them.
+         *
+         * The preview already refused if any of these jobs carry a bill, a
+         * payment, a refund or a commission, so nothing removed here changes
+         * what the shop earned. Children first in every case: several of these
+         * are declared with onDelete restrict, so the job will not go while a
+         * row still points at it - which is the database enforcing exactly the
+         * order this loop takes.
+         */
+        if (jobIds.length > 0) {
+            for (const table of JOB_CHILD_TABLES) {
+                await tx.execute(sql`DELETE FROM ${sql.identifier(table)} WHERE job_id IN (${idList(jobIds)})`);
+            }
+            await tx.execute(sql`UPDATE service_requests SET converted_job_id = NULL WHERE converted_job_id IN (${idList(jobIds)})`);
+            await tx.execute(sql`DELETE FROM job_tickets WHERE id IN (${idList(jobIds)})`);
+        }
+
         await tx.execute(sql`DELETE FROM service_requests WHERE id IN (${idList(srIds)})`);
         await tx.execute(sql`DELETE FROM customer_reset_links WHERE user_id IN (${idList(customerIds)})`);
         await tx.execute(sql`DELETE FROM device_tokens WHERE user_id IN (${idList(customerIds)})`);

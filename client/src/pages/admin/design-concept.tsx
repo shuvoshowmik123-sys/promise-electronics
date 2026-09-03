@@ -1341,31 +1341,8 @@ export default function DesignConcept() {
 
 // Reusable Layout Wrapper
 function MainContentWrapper({ children, isFixed, activeTab, mobileChromeHidden }: { children: React.ReactNode, isFixed: boolean, activeTab: string, mobileChromeHidden: boolean }) {
-    /*
-     * The content box is one size, always, and only ever moves.
-     *
-     * It used to grow by 4rem at the moment the chrome hid - translate up,
-     * then stretch to fill the gap that left at the bottom. That makes the
-     * scrolling element resize as a direct consequence of scrolling it, and
-     * near the end of a list the browser has to pull scrollTop back to keep it
-     * in range: the list yanks backwards under the finger, and scrolling the
-     * other way shrinks the box and yanks it the other. On the two longest
-     * lists - jobs and the dashboard - that is constant. On a tab whose content
-     * does not overflow the chrome never hides, nothing resizes, and it feels
-     * fine, which is why only some tabs were affected.
-     *
-     * Same appearance, expressed the other way round: the box is always a full
-     * viewport tall, and it is pushed DOWN by 4rem while the header is showing
-     * rather than stretched when it is not. Hiding the chrome now only removes
-     * a transform. Transforms do not reflow, so the scroll position cannot be
-     * disturbed by them.
-     *
-     * The 4rem that sits below the fold while the header is up is already
-     * covered: the scroller carries 7.5rem of bottom clearance for the dock, so
-     * the last card was never against that edge.
-     */
-    const mobileChromeOffset = mobileChromeHidden ? "translate-y-0" : "translate-y-16";
-    const mobileHeight = "h-full";
+    const mobileChromeOffset = mobileChromeHidden ? "-translate-y-16" : "translate-y-0";
+    const mobileHeight = mobileChromeHidden ? "h-[calc(100%+4rem)]" : "h-full";
     const mobileShellStyle = {
         // 7.5rem keeps final list cards fully above the floating dock when chrome is visible at end.
         "--admin-mobile-bottom-clearance": "calc(7.5rem + env(safe-area-inset-bottom))",
@@ -1373,7 +1350,7 @@ function MainContentWrapper({ children, isFixed, activeTab, mobileChromeHidden }
 
     if (isFixed) {
         return (
-            <div className="h-full pt-0 md:pt-5 px-0 md:px-5 pb-0 md:pb-5 flex flex-col overflow-hidden bg-[#f8fafc] md:overflow-y-auto" style={mobileShellStyle}>
+            <div className="h-full pt-16 md:pt-5 px-0 md:px-5 pb-0 md:pb-5 flex flex-col bg-[#f8fafc] md:overflow-y-auto" style={mobileShellStyle}>
                 <div
                     className={cn("max-w-[1600px] mx-auto w-full md:h-full shrink-0 flex flex-col min-h-0 transition-transform duration-200 ease-out will-change-transform md:translate-y-0", mobileHeight, mobileChromeOffset)}
                 >
@@ -1383,9 +1360,9 @@ function MainContentWrapper({ children, isFixed, activeTab, mobileChromeHidden }
         );
     }
     return (
-        <div className="min-h-full pt-0 md:pt-5 px-0 md:px-5 pb-0 md:pb-5 flex flex-col bg-[#f8fafc]" style={mobileShellStyle}>
+        <div className="min-h-full pt-16 md:pt-5 px-0 md:px-5 pb-0 md:pb-5 flex flex-col bg-[#f8fafc]" style={mobileShellStyle}>
             <div
-                className={cn("max-w-[1600px] mx-auto w-full flex-1 shrink-0 transition-transform duration-200 ease-out will-change-transform md:translate-y-0 md:min-h-0", mobileChromeOffset)}
+                className={cn("max-w-[1600px] mx-auto w-full flex-1 shrink-0 transition-transform duration-200 ease-out will-change-transform md:translate-y-0", mobileChromeHidden && "min-h-[calc(100%+4rem)]", mobileChromeOffset)}
             >
                 {children}
             </div>

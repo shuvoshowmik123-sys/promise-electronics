@@ -31,6 +31,8 @@ type Preview = {
 };
 
 const CONFIRMATION = "DELETE TEST DATA";
+/* Its own phrase, because it destroys repair history rather than a login. */
+const WORK_CONFIRMATION = "DELETE JOBS TOO";
 
 function splitList(raw: string): string[] {
     return raw.split(/[\s,\n]+/).map((s) => s.trim()).filter(Boolean);
@@ -43,9 +45,21 @@ export default function QaCleanupSection() {
     const [preview, setPreview] = useState<Preview | null>(null);
     const [confirmation, setConfirmation] = useState("");
     const [busy, setBusy] = useState<"idle" | "previewing" | "deleting">("idle");
+    const [includeWork, setIncludeWork] = useState(false);
+    const [workConfirmation, setWorkConfirmation] = useState("");
 
-    const targets = { phones: splitList(phonesRaw), ticketNumbers: splitList(ticketsRaw) };
+    const targets = { phones: splitList(phonesRaw), ticketNumbers: splitList(ticketsRaw), includeWork };
     const hasTargets = targets.phones.length > 0 || targets.ticketNumbers.length > 0;
+
+    const setScope = (next: boolean) => {
+        setIncludeWork(next);
+        // The old preview described a different operation. Keeping it on screen
+        // beside a changed scope is how somebody approves counts that were
+        // never true for what they are about to run.
+        setPreview(null);
+        setConfirmation("");
+        setWorkConfirmation("");
+    };
 
     const runPreview = async () => {
         setBusy("previewing");
@@ -66,17 +80,20 @@ export default function QaCleanupSection() {
 
     const runDelete = async () => {
         if (confirmation !== CONFIRMATION) return;
+        if (includeWork && workConfirmation !== WORK_CONFIRMATION) return;
         setBusy("deleting");
         try {
             const result = await fetchApi<{ deleted: Record<string, number> }>(
                 "/admin/system/qa-cleanup/execute",
-                { method: "POST", body: JSON.stringify({ ...targets, confirmation }) },
+                { method: "POST", body: JSON.stringify({ ...targets, confirmation, workConfirmation }) },
             );
             toast.success(
                 `Removed ${result.deleted.customers} customer(s) and ${result.deleted.serviceRequests} service request(s).`,
             );
             setPreview(null);
             setConfirmation("");
+            setWorkConfirmation("");
+            setIncludeWork(false);
             setPhonesRaw("");
             setTicketsRaw("");
         } catch (error: any) {
@@ -226,6 +243,34 @@ export default function QaCleanupSection() {
                     </div>
                 )}
 
+                {/*
+                  * The scope, chosen before the preview rather than after.
+                  *
+                  * Without it a customer whose request ever became a job could
+                  * not be removed at all - which is right for a live shop and
+                  * useless for clearing demo records, because every realistic
+                  * test customer has a job behind it.
+                  */}
+                <label className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50/60 p-3">
+                    <input
+                        type="checkbox"
+                        checked={includeWork}
+                        onChange={(e) => setScope(e.target.checked)}
+                        className="mt-0.5 h-4 w-4 shrink-0 accent-amber-600"
+                        data-testid="checkbox-include-work"
+                    />
+                    <span className="min-w-0">
+                        <span className="block text-[12px] font-bold text-amber-900">
+                            Delete their jobs as well
+                        </span>
+                        <span className="block text-[11px] font-medium text-amber-800">
+                            Removes the repair tickets and their history with the profile. Anything
+                            carrying money — a bill, a payment, a refund, a commission, a shop order —
+                            still refuses, and the preview names which.
+                        </span>
+                    </span>
+                </label>
+
                 {preview?.safeToDelete && (
                     <div className="space-y-2 rounded-xl border border-red-200 bg-red-50/60 p-3">
                         <Label htmlFor="qa-confirm" className="text-[12px] text-red-700">
@@ -239,9 +284,28 @@ export default function QaCleanupSection() {
                             className="h-11 rounded-xl border-red-200 bg-white"
                             data-testid="input-qa-confirm"
                         />
+                        {includeWork && (
+                            <>
+                                <Label htmlFor="qa-confirm-work" className="text-[12px] text-red-700">
+                                    Jobs are included. Also type <b>{WORK_CONFIRMATION}</b>.
+                                </Label>
+                                <Input
+                                    id="qa-confirm-work"
+                                    value={workConfirmation}
+                                    onChange={(e) => setWorkConfirmation(e.target.value)}
+                                    placeholder={WORK_CONFIRMATION}
+                                    className="h-11 rounded-xl border-red-200 bg-white"
+                                    data-testid="input-qa-confirm-work"
+                                />
+                            </>
+                        )}
                         <Button
                             className="h-11 w-full rounded-xl bg-red-600 font-bold hover:bg-red-700"
-                            disabled={confirmation !== CONFIRMATION || busy !== "idle"}
+                            disabled={
+                                confirmation !== CONFIRMATION
+                                || (includeWork && workConfirmation !== WORK_CONFIRMATION)
+                                || busy !== "idle"
+                            }
                             onClick={runDelete}
                             data-testid="button-qa-delete"
                         >

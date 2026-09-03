@@ -1040,6 +1040,7 @@ router.post('/api/admin/system/qa-cleanup/preview', requireAdminAuth, requireSup
         const preview = await previewCleanup({
             phones: Array.isArray(req.body?.phones) ? req.body.phones : [],
             ticketNumbers: Array.isArray(req.body?.ticketNumbers) ? req.body.ticketNumbers : [],
+            includeWork: req.body?.includeWork === true,
         });
         res.json(preview);
     } catch (error: any) {
@@ -1066,8 +1067,23 @@ router.post('/api/admin/system/qa-cleanup/execute', requireAdminAuth, requireSup
         const phones = Array.isArray(req.body?.phones) ? req.body.phones : [];
         const ticketNumbers = Array.isArray(req.body?.ticketNumbers) ? req.body.ticketNumbers : [];
 
+        /*
+         * A second confirmation for a second class of destruction.
+         *
+         * Taking the jobs with a profile removes repair history, not just a
+         * test login, so it cannot ride along on the phrase that authorises the
+         * ordinary cleanup. Somebody clearing demo customers has to say which
+         * of the two they mean.
+         */
+        const includeWork = req.body?.includeWork === true;
+        if (includeWork && req.body?.workConfirmation !== 'DELETE JOBS TOO') {
+            return res.status(400).json({
+                error: "Deleting jobs needs its own confirmation. Send { workConfirmation: 'DELETE JOBS TOO' } as well.",
+            });
+        }
+
         const { executeCleanup } = await import('../services/qa-cleanup.service.js');
-        const result = await executeCleanup({ phones, ticketNumbers });
+        const result = await executeCleanup({ phones, ticketNumbers, includeWork });
 
         // Deliberately records the identifiers: this is a destructive admin
         // action and "what exactly was removed" is the whole point of the trail.
