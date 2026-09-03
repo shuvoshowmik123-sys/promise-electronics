@@ -58,6 +58,37 @@ function Router() {
   const isCorporateRoute = location.startsWith("/corporate");
   const isTechRoute = location.startsWith("/tech");
 
+  /*
+   * The staff app is the admin portal and nothing else.
+   *
+   * Routing here is a fall-through: /admin, /corporate and /tech are matched by
+   * prefix and EVERY other path renders the customer portal. On the web that is
+   * correct - one deployment serves all three audiences at one domain. Inside
+   * the APK it is not: the same bundle ships every portal, so any navigation
+   * that leaves /admin - a hardware back press at the dashboard, a stray link,
+   * a redirect after a failed auth check - drops a staff member into the
+   * customer shop front, still holding a staff session.
+   *
+   * So on native, anything that is not a staff route is sent back to the admin
+   * portal instead of rendering. Redirect rather than a blank screen, because
+   * the destination is never a mystery here: there is exactly one thing this
+   * app is for.
+   *
+   * Note this makes those portals unreachable, not absent. Their chunks are
+   * still inside the APK and are simply never loaded. Keeping them out of the
+   * build altogether is a separate change to how the bundle is split.
+   */
+  const isStaffRoute = isAdminRoute || isTechRoute;
+  useEffect(() => {
+    if (Capacitor.isNativePlatform() && !isStaffRoute) {
+      setLocation("/admin", { replace: true });
+    }
+  }, [isStaffRoute, setLocation]);
+
+  if (Capacitor.isNativePlatform() && !isStaffRoute) {
+    return <PageSkeleton />;
+  }
+
   // All /admin/* routes (including /admin/login) share one AdminAuthProvider
   if (isAdminRoute) {
     return (

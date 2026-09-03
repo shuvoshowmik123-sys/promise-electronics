@@ -11,6 +11,19 @@ const ROOT_SCREENS = [
     '/home',
     '/login',
     '/track-order',
+    /*
+     * The staff app's own roots.
+     *
+     * Every entry above this is a customer route, so in the staff app nothing
+     * was ever a root and back fell through to history. History before the
+     * dashboard is whatever the shell passed through while booting, and the
+     * router renders the customer portal for anything that is not a staff path
+     * - so back at the dashboard walked out of the admin portal and into the
+     * shop front. Back at the top of the app should offer to leave the app,
+     * which is what these do.
+     */
+    '/admin',
+    '/admin/login',
 ];
 
 /**
@@ -124,6 +137,19 @@ export function useAndroidBack() {
             if (wizardBackButton) {
                 console.log('[BackButton] Triggering wizard back');
                 wizardBackButton.click();
+                return;
+            }
+
+            /*
+             * A staff route never goes back to a non-staff one.
+             *
+             * history.back() from inside /admin can land on whatever preceded
+             * it, and anything that is not /admin or /tech renders the customer
+             * portal. Treating an admin sub-route as returning to the dashboard
+             * keeps the back button inside the app it belongs to.
+             */
+            if (pathOnly.startsWith('/admin')) {
+                setLocation('/admin');
                 return;
             }
 
