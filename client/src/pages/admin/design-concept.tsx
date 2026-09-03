@@ -1342,7 +1342,34 @@ export default function DesignConcept() {
 // Reusable Layout Wrapper
 function MainContentWrapper({ children, isFixed, activeTab, mobileChromeHidden }: { children: React.ReactNode, isFixed: boolean, activeTab: string, mobileChromeHidden: boolean }) {
     const mobileChromeOffset = mobileChromeHidden ? "-translate-y-16" : "translate-y-0";
-    const mobileHeight = mobileChromeHidden ? "h-[calc(100%+4rem)]" : "h-full";
+    /*
+     * One height, always. Only the transform changes.
+     *
+     * This was h-[calc(100%+4rem)] while the chrome was hidden: slide the box
+     * up by 4rem, then grow it by 4rem so its bottom edge still reached the
+     * viewport. The growth is a layout change, and it happens as a direct
+     * result of scrolling - so the scrolling element is resized under the
+     * finger. Near the end of a list the browser then has to pull scrollTop
+     * back into the new range, which reads as the list sticking and refusing to
+     * go further; scrolling the other way shrinks it again and yanks the other
+     * way. A tab whose content does not overflow never hides the chrome, never
+     * resizes, and feels fine - which is why only the long lists, dashboard and
+     * jobs, showed it.
+     *
+     * Dropping the growth costs the 4rem the content would have reclaimed at
+     * the bottom. Nothing shows there: the outer wrapper paints the same
+     * #f8fafc, the dock is hidden at that moment, and MobileScrollContent
+     * already reserves 7.5rem of bottom clearance, so the last card was never
+     * within 4rem of that edge anyway.
+     *
+     * Deliberately NOT the 1.2.4 approach. That one also removed the outer's
+     * pt-16, added overflow-hidden and inverted the transform, and the
+     * combination locked scrolling outright on a real device while looking
+     * correct in Chrome's device emulation. Everything else here is untouched:
+     * the padding that reserves the header, the transform, the breakpoints. The
+     * only thing removed is the animation of a height.
+     */
+    const mobileHeight = "h-full";
     const mobileShellStyle = {
         // 7.5rem keeps final list cards fully above the floating dock when chrome is visible at end.
         "--admin-mobile-bottom-clearance": "calc(7.5rem + env(safe-area-inset-bottom))",
@@ -1362,7 +1389,7 @@ function MainContentWrapper({ children, isFixed, activeTab, mobileChromeHidden }
     return (
         <div className="min-h-full pt-16 md:pt-5 px-0 md:px-5 pb-0 md:pb-5 flex flex-col bg-[#f8fafc]" style={mobileShellStyle}>
             <div
-                className={cn("max-w-[1600px] mx-auto w-full flex-1 shrink-0 transition-transform duration-200 ease-out will-change-transform md:translate-y-0", mobileChromeHidden && "min-h-[calc(100%+4rem)]", mobileChromeOffset)}
+                className={cn("max-w-[1600px] mx-auto w-full flex-1 shrink-0 transition-transform duration-200 ease-out will-change-transform md:translate-y-0", mobileChromeOffset)}
             >
                 {children}
             </div>
