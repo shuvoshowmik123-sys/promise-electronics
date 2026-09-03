@@ -633,8 +633,32 @@ describe.skipIf(!LOCAL_PG_AVAILABLE)("driver handover flow (real app, disposable
     await checkIn("u-driver", "Test Driver", "Driver");
     const driver = await loginAdmin("testdriver");
 
+    /**
+     * A request of its own, never received.
+     *
+     * This used to reuse the shared request, which by this point in the file
+     * has been through a receipt. That was fine while receipt left the request
+     * unconverted — but a proven handover now creates the job at the moment
+     * custody transfers, so the shared request owns one and this precondition
+     * can no longer be reached through it. The refusal being asserted is still
+     * real and still matters; it just needs a request that never got as far as
+     * a doorstep.
+     */
+    const customer = request.agent(app);
+    const fresh = await customer.post("/api/service-requests").send({
+      brand: "Samsung", primaryIssue: "No power", customerName: "Handover Test",
+      // A different number on purpose. Reusing the shared customer's phone
+      // takes the de-duplication path, which answers 202 with a confirmation
+      // payload rather than a created request.
+      phone: "01800000199", address: "Test address",
+      servicePreference: "home_pickup", serviceMode: "pickup",
+      requestIntent: "repair", status: "Pending",
+    });
+    expect(fresh.status).toBe(201);
+    const unconvertedId = fresh.body.id;
+
     const send = await driver
-      .post(`/api/admin/service-requests/${serviceRequestId}/custody-otp/send`)
+      .post(`/api/admin/service-requests/${unconvertedId}/custody-otp/send`)
       .send({ action: "delivery" });
 
     /**

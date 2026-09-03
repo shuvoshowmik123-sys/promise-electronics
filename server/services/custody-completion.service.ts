@@ -50,6 +50,8 @@ export interface CustodyCompletionOutcome {
     taskCompleted: boolean;
     pickupScheduleStatus: string | null;
     stageMovedTo: string | null;
+    /** Set when receipt created the job, so the caller can name it. */
+    jobCreatedId?: string | null;
 }
 
 /** Statuses meaning the logistics task has nothing left to do. */
@@ -67,6 +69,8 @@ export async function completeCustody(input: CustodyCompletionInput): Promise<Cu
     let jobDelivered = false;
     let taskCompleted = false;
     let stageMovedTo: string | null = null;
+    /** Set when receipt created the job, so the caller can show it. */
+    let jobCreatedId: string | null = null;
 
     const { updateTaskStatusWithLifecycle, updateTaskStatus } =
         await import("./logistics-task.service.js");
@@ -177,6 +181,61 @@ export async function completeCustody(input: CustodyCompletionInput): Promise<Cu
         taskCompleted = true;
     }
 
+    /**
+     * The job is born here, at the moment custody is proven.
+     *
+     * It used to stop one step short: the stage moved to picked_up, the task
+     * closed, the pickup was marked collected — and no job existed. Somebody
+     * had to open the request later and press convert. Until they did, the
+     * television was physically on a shelf while appearing on no technician's
+     * list and in no job queue, and nothing anywhere said so.
+     *
+     * This is the right moment for it, and not merely the convenient one. The
+     * OTP that has just been verified is evidence that this customer handed
+     * this device to this person at this time. A manager pressing a button in
+     * an office an hour later proves nothing — he was not there. Custody is the
+     * only fact that should bring a job into existence, and this is the instant
+     * it becomes provable.
+     *
+     * What is created is a shell: customer, device, the complaint in the
+     * customer's own words, and the custody record. No priority, no technician,
+     * no diagnosis. A driver at somebody's front door should not be making
+     * repair decisions, and an unassigned job on the board is worth far more
+     * than an invisible request.
+     *
+     * Failure here must not fail the handover. The driver is standing in a
+     * doorway holding a television and the OTP is already spent; refusing the
+     * whole exchange because a downstream insert failed would leave the custody
+     * record and the physical device disagreeing. The unbooked-device sweep
+     * still catches anything that falls through, which is exactly the safety
+     * net it was built to be.
+     */
+    /*
+     * Receipt only. A delivery must never create a job.
+     *
+     * The first version guarded on convertedJobId alone, and the delivery
+     * branch above does not return - so a handover BACK to the customer fell
+     * through to here and tried to create a job for a request on its way out of
+     * the shop. The driver-handover test caught it: delivery custody is meant
+     * to refuse when no job exists, and this had quietly started manufacturing
+     * one instead of refusing.
+     */
+    if (action === "receive" && !request.convertedJobId) {
+        try {
+            const converted = await jobService.verifyAndConvertServiceRequest(
+                request.id,
+                actorName,
+                "Created automatically on proven custody handover",
+            );
+            jobCreatedId = converted?.jobTicket?.id ?? null;
+        } catch (err) {
+            console.error(
+                "[Custody] Job creation after receipt failed:",
+                (err as Error).message,
+            );
+        }
+    }
+
     const pickup = await pickupRepo.getPickupScheduleByServiceRequestId(request.id);
     if (pickup && pickup.status !== "PickedUp") {
         await pickupRepo.updatePickupSchedule(pickup.id, {
@@ -195,6 +254,7 @@ export async function completeCustody(input: CustodyCompletionInput): Promise<Cu
         taskCompleted,
         pickupScheduleStatus: pickup ? "PickedUp" : null,
         stageMovedTo,
+        jobCreatedId,
     };
 }
 
