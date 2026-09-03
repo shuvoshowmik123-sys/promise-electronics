@@ -71,7 +71,7 @@ const ADVISORY_LOCK_KEY = "promise_main_schema_migrate";
 const LOCK_WAIT_BUDGET_MS = parseInt(process.env.MAIN_MIGRATION_LOCK_WAIT_MS || "60000", 10);
 const LOCK_POLL_INTERVAL_MS = parseInt(process.env.MAIN_MIGRATION_LOCK_POLL_MS || "1000", 10);
 
-export const REQUIRED_MAIN_SCHEMA_VERSION = "2026_09_02_part_identity";
+export const REQUIRED_MAIN_SCHEMA_VERSION = "2026_09_03_job_delay_reason";
 
 export const MAIN_SCHEMA_MIGRATIONS: MainSchemaMigration[] = [
   {
@@ -2909,6 +2909,87 @@ export const MAIN_SCHEMA_MIGRATIONS: MainSchemaMigration[] = [
         FROM inventory_items i
         WHERE d.inventory_item_id = i.id
           AND d.part_name IS NULL
+      `);
+    },
+  },
+  {
+    id: "2026_09_03_completion_and_chase",
+    description:
+      "job_tickets: who completed it, and whether the customer is chasing",
+    up: async (client) => {
+      /**
+       * Who said it was finished.
+       *
+       * completed_at recorded the moment and nobody's name, so a repair marked
+       * complete had a time and no author. Parts declaration already keeps
+       * parts_declared_by for exactly this reason - an entry nobody is attached
+       * to cannot be questioned, and the person who would answer the question
+       * is the first thing anyone asks for.
+       *
+       * The name is snapshotted rather than joined to a user id. Staff leave,
+       * accounts are renamed and reassigned, and a job closed in March must
+       * still say who closed it in March.
+       */
+      await client.query(`ALTER TABLE job_tickets ADD COLUMN IF NOT EXISTS completed_by_name TEXT`);
+      await client.query(`ALTER TABLE job_tickets ADD COLUMN IF NOT EXISTS completed_by_user_id TEXT`);
+
+      /**
+       * That the customer is asking.
+       *
+       * Recorded on the job so it survives the notification. A push is a moment
+       * - it is swiped away, it arrives while the phone is in a pocket, it is
+       * read by somebody who then puts the set down - and the fact that a
+       * customer is waiting has to outlive that moment or it may as well not
+       * have been sent. Held here, the job itself can show it, and a second
+       * chase can be seen as a second chase.
+       *
+       * The count is what makes it useful to a manager. One customer asking is
+       * ordinary; the same customer asking three times is a job that is stuck
+       * and a technician who has not said so.
+       */
+      await client.query(`ALTER TABLE job_tickets ADD COLUMN IF NOT EXISTS customer_chase_at TIMESTAMP`);
+      await client.query(`ALTER TABLE job_tickets ADD COLUMN IF NOT EXISTS customer_chase_count INTEGER NOT NULL DEFAULT 0`);
+      await client.query(`ALTER TABLE job_tickets ADD COLUMN IF NOT EXISTS customer_chase_note TEXT`);
+    },
+  },
+  {
+    id: "2026_09_03_job_delay_reason",
+    description: "job_tickets: why a job is taking longer, answered with one tap",
+    up: async (client) => {
+      /**
+       * The answer to the nudge.
+       *
+       * A stale-job reminder had nothing to answer it with. It fired, it was
+       * read, and the job stayed exactly as stale — so the next sweep fired
+       * again, and the one after that, until the reminder became something to
+       * swipe rather than something to act on. A notification with no reply is
+       * not a reminder, it is a repeated complaint.
+       *
+       * One of six fixed reasons, tapped. Free text was the obvious
+       * alternative and would have been worse: somebody putting their tools
+       * down writes "still working", which answers the nudge without saying
+       * anything, and no two people write the same delay the same way, so
+       * nothing can be counted afterwards.
+       *
+       * answered_at is what silences the nudge, and it is separate from the
+       * reason itself so that a job re-nudged next week can tell a fresh answer
+       * from a stale one.
+       */
+      await client.query(`ALTER TABLE job_tickets ADD COLUMN IF NOT EXISTS delay_reason TEXT`);
+      await client.query(`ALTER TABLE job_tickets ADD COLUMN IF NOT EXISTS delay_reason_at TIMESTAMP`);
+      await client.query(`ALTER TABLE job_tickets ADD COLUMN IF NOT EXISTS delay_reason_by TEXT`);
+
+      /**
+       * Indexed on the pair the sweep actually asks for.
+       *
+       * The nudge query is "open jobs untouched for N days that have not
+       * answered", and without this it is a sequential scan of every job the
+       * shop has ever taken in, run every few minutes forever.
+       */
+      await client.query(`
+        CREATE INDEX IF NOT EXISTS idx_job_tickets_delay_answer
+        ON job_tickets (delay_reason_at)
+        WHERE delay_reason_at IS NOT NULL
       `);
     },
   },

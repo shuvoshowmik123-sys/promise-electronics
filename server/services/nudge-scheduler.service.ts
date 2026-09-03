@@ -453,10 +453,27 @@ async function sweepStaleJobs(runDay: string, minutes: number): Promise<void> {
                    j.assigned_technician_id AS technician_id,
                    j.device,
                    j.status,
-                   COALESCE(
-                       (SELECT MAX(a.created_at) FROM audit_logs a
-                         WHERE a.entity = 'JobTicket' AND a.entity_id = j.id),
-                       j.created_at
+                   j.delay_reason,
+                   /*
+                    * Answering the nudge counts as touching the job.
+                    *
+                    * Without this term a technician who taps "waiting for
+                    * parts" is chased again on the next sweep and every sweep
+                    * after, because nothing they did was an audit-logged edit.
+                    * A reminder that fires again after it has been answered is
+                    * the thing that teaches people to swipe reminders.
+                    *
+                    * It resets the clock rather than stopping it. A part that
+                    * has been on order for a fortnight is still a stalled job;
+                    * it just is not one to chase again tomorrow.
+                    */
+                   GREATEST(
+                       COALESCE(
+                           (SELECT MAX(a.created_at) FROM audit_logs a
+                             WHERE a.entity = 'JobTicket' AND a.entity_id = j.id),
+                           j.created_at
+                       ),
+                       COALESCE(j.delay_reason_at, j.created_at)
                    ) AS last_touched
             FROM job_tickets j
             WHERE j.assigned_technician_id IS NOT NULL
@@ -466,6 +483,7 @@ async function sweepStaleJobs(runDay: string, minutes: number): Promise<void> {
                technician_id AS "technicianId",
                device,
                status,
+               delay_reason AS "delayReason",
                FLOOR(EXTRACT(EPOCH FROM (NOW() - last_touched)) / 86400) AS "idleDays"
         FROM activity
         WHERE last_touched < NOW() - (${STALE_JOB_DAYS} * INTERVAL '1 day')
@@ -476,13 +494,23 @@ async function sweepStaleJobs(runDay: string, minutes: number): Promise<void> {
     const escalations: any[] = [];
     for (const job of ((rows as any).rows ?? rows) as any[]) {
         const idleDays = Number(job.idleDays);
-        if (idleDays >= STALE_JOB_ESCALATE_DAYS) {
+        /*
+         * Silence escalates, not age.
+         *
+         * A job with a reason on it is being managed - somebody has said what
+         * it is waiting for - and sending that to a manager as a stalled job
+         * produces a list of forty old repairs that are all accounted for,
+         * which is a list nobody reads. What a manager needs is the job whose
+         * technician has said nothing at all, and that is a much shorter list
+         * and a much more useful one.
+         */
+        if (idleDays >= STALE_JOB_ESCALATE_DAYS && !job.delayReason) {
             escalations.push(job);
             continue;
         }
         await sendOnce(runDay, "stale_job", String(job.technicianId), {
             title: `${job.device ?? "A repair"} has not moved in ${idleDays} days`,
-            message: `Still ${job.status}. Updating it keeps the customer's expectation accurate.`,
+            message: `Still ${job.status}. Tap to say why, or mark it complete.`,
             link: "/admin#jobs",
             jobId: job.id,
         }, String(job.id));

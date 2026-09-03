@@ -88,7 +88,20 @@ export function getPrimaryAction(
     if (status === "Testing" && canAdvance) {
         return { label: "Record Final Test", type: "advance", Icon: ClipboardCheck };
     }
-    if (status === "Ready" && canAdvance) return { label: "Complete & Bill", type: "advance", Icon: CreditCard };
+    /*
+     * Completing is not billing.
+     *
+     * "Complete & Bill" named one button after two jobs and did only the first
+     * - it advances Ready to Completed and never opens a till - while a second
+     * button beside it, "Bill at POS", was the one that actually takes money.
+     * Two controls, both saying bill, one of which does not. Nobody could tell
+     * them apart, and the person who may finish a repair is not always the
+     * person who may handle payment.
+     *
+     * So this says what it does. Billing stays on its own control, shown only
+     * to whoever holds the till permission.
+     */
+    if (status === "Ready" && canAdvance) return { label: "Mark Completed", type: "advance", Icon: CheckCircle2 };
 
     /**
      * Delivery stays with canEdit. Handing the television back is a counter

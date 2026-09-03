@@ -7,6 +7,7 @@ import { Router, Request, Response } from 'express';
 import { storage } from '../storage.js';
 import { jobRepo, serviceRequestRepo, userRepo, attendanceRepo, systemRepo, settingsRepo, notificationRepo } from '../repositories/index.js';
 import { insertJobTicketSchema } from '../../shared/schema.js';
+import { isJobDelayReason, JOB_DELAY_REASONS } from '../../shared/delay-reasons.js';
 
 import { notifyAdminUpdate, notifyCustomerUpdate } from './middleware/sse-broker.js';
 import { auditLogger } from '../utils/auditLogger.js';
@@ -650,6 +651,22 @@ router.post('/api/job-tickets/:id/advance-status', requireAdminAuth, requireGran
         if (nextStatus === 'Completed') {
             const completedAt = new Date();
             extraPatch.completedAt = completedAt;
+            /*
+             * The name goes on it.
+             *
+             * completedAt recorded the moment and no author, so a finished
+             * repair had a timestamp nobody was attached to. Parts declaration
+             * already keeps parts_declared_by for the same reason: the first
+             * question anyone asks of a record is who entered it, and a record
+             * that cannot answer is one nobody can follow up.
+             *
+             * Snapshotted rather than joined, because staff leave and accounts
+             * are renamed, and a job closed today must still name who closed it
+             * years from now.
+             */
+            const finisher = (req as any).user;
+            extraPatch.completedByName = finisher?.name || finisher?.username || 'Unknown';
+            extraPatch.completedByUserId = finisher?.id ?? null;
             /**
              * Both warranty clocks, resolved together.
              *
@@ -2261,6 +2278,60 @@ router.get('/api/admin/job-tickets/:id/repair-case', requireAdminAuth, requireGr
 });
 
 /**
+ * POST /api/job-tickets/:id/delay-reason - answering the stale-job nudge
+ *
+ * The reminder had nothing to answer it with. It fired, it was read, the job
+ * stayed stale, and the next sweep fired again - so it stopped being a reminder
+ * and became something to swipe past. This is the reply.
+ *
+ * Open to the person doing the work, deliberately. Unlike raising urgency -
+ * which is a customer's complaint and not a technician's to declare - this is
+ * the technician reporting on their own bench, and they are the only one who
+ * knows. A manager can also answer it, for the job whose technician is off.
+ *
+ * Recording it silences the nudge until the job goes stale again from the new
+ * answer, which is the difference between a job being ignored and a job being
+ * managed. Only silence escalates.
+ */
+router.post('/api/job-tickets/:id/delay-reason', requireAdminAuth, requireAnyGranularPermission(['jobs.advanceStatus', 'jobs.edit', 'jobs.reportOutcome', 'jobs.view']), async (req: Request, res: Response) => {
+    try {
+        const job = await jobRepo.getJobTicket(req.params.id);
+        if (!job) return res.status(404).json({ error: 'Job not found' });
+
+        const reason = req.body?.reason;
+        if (!isJobDelayReason(reason)) {
+            return res.status(400).json({
+                error: 'Pick one of the listed reasons.',
+                code: 'DELAY_REASON_INVALID',
+                allowed: JOB_DELAY_REASONS.map((r) => r.id),
+            });
+        }
+
+        const actor = (req as any).user;
+        const updated = await jobRepo.updateJobTicket(job.id, {
+            delayReason: reason,
+            delayReasonAt: new Date(),
+            delayReasonBy: actor?.name || actor?.id || 'Unknown',
+        } as any);
+
+        auditLogger.log({
+            userId: actor?.id || 'unknown',
+            action: 'JOB_DELAY_REASON',
+            entity: 'JobTicket',
+            entityId: job.id,
+            details: `Delay reason: ${reason}`,
+            req,
+            severity: 'info',
+        });
+
+        res.json({ ok: true, job: updated });
+    } catch (error) {
+        console.error('[Jobs.DelayReason]', (error as Error).message);
+        res.status(500).json({ error: 'Failed to record the reason' });
+    }
+});
+
+/**
  * POST /api/job-tickets/:id/customer-chase - the customer is asking about their repair
  *
  * There was no way to record this. A customer rings the counter to ask where
@@ -2286,7 +2357,15 @@ router.get('/api/admin/job-tickets/:id/repair-case', requireAdminAuth, requireGr
  * Neither notification can fail the request. The chase is worth recording even
  * if Firebase is unreachable, and the customer is standing at the counter.
  */
-router.post('/api/job-tickets/:id/customer-chase', requireAdminAuth, requireAnyGranularPermission(['jobs.view', 'serviceRequests.logCall']), async (req: Request, res: Response) => {
+/*
+ * Logged by whoever fields the call, not by the bench.
+ *
+ * jobs.view admitted every technician, so a technician could raise urgency on
+ * their own job - which is not a customer chasing, it is a technician marking
+ * their own work important. The counter, dispatch and managers take these
+ * calls; the technician is who the result is delivered to.
+ */
+router.post('/api/job-tickets/:id/customer-chase', requireAdminAuth, requireAnyGranularPermission(['serviceRequests.logCall', 'jobs.assignTechnician', 'jobs.edit', 'jobs.reportOutcome']), async (req: Request, res: Response) => {
     try {
         const job = await jobRepo.getJobTicket(req.params.id);
         if (!job) return res.status(404).json({ error: 'Job not found' });
@@ -2305,6 +2384,24 @@ router.post('/api/job-tickets/:id/customer-chase', requireAdminAuth, requireAnyG
             : `${device}. Job ${job.id}.`;
 
         const assignedId = (job as any).assignedTechnicianId;
+
+        /*
+         * Stamped on the job before anything is sent.
+         *
+         * The push is the alert; this is the record. A technician who was
+         * asleep, out of signal, or simply swiped it away still finds the job
+         * marked when they next open it, and a manager can see that the same
+         * customer has now asked three times.
+         */
+        try {
+            await jobRepo.updateJobTicket(job.id, {
+                customerChaseAt: new Date(),
+                customerChaseCount: (Number((job as any).customerChaseCount) || 0) + 1,
+                customerChaseNote: note || null,
+            } as any);
+        } catch (err) {
+            console.error('[CustomerChase] Could not mark the job:', (err as Error).message);
+        }
 
         if (assignedId) {
             const { notifyStaffAssignment } = await import('../services/staff-assignment-notify.service.js');

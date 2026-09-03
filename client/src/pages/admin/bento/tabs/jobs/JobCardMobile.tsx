@@ -1,9 +1,10 @@
 import { motion } from "framer-motion";
 import type { MouseEvent } from "react";
-import { CreditCard, PackagePlus, User, UserCheck, PhoneCall } from "lucide-react";
+import { CreditCard, PackagePlus, User, UserCheck, PhoneCall, AlertCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { JOB_DELAY_REASONS, delayReasonLabel } from "@shared/delay-reasons";
 import type { JobTicket } from "@shared/schema";
 import { getSafeJobDisplayRef } from "@shared/job-display-utils";
 import { HighlightMatch } from "../../shared";
@@ -51,6 +52,8 @@ interface JobCardMobileProps {
      * showing one that refuses.
      */
     onCustomerChase?: (job: JobTicket) => void;
+    /** Answer the stale-job nudge with one of the fixed reasons. */
+    onSetDelayReason?: (job: JobTicket, reason: string) => void;
     /** True when this job has no parts recorded — what the nightly nudge chases. */
     needsPartsDeclaration?: boolean;
     onDeclareParts?: (job: JobTicket) => void;
@@ -79,6 +82,7 @@ export function JobCardMobile({
     isBillable = false,
     onBillAtPos,
     onCustomerChase,
+    onSetDelayReason,
     needsPartsDeclaration = false,
     onDeclareParts,
 }: JobCardMobileProps) {
@@ -113,12 +117,62 @@ export function JobCardMobile({
 
     const isHotPriority = job.priority === "High" || job.priority === "Critical";
 
+    /*
+     * The customer is waiting, and the card says so on its own.
+     *
+     * A technician is not given the control that raises this - somebody
+     * marking their own job urgent is not a customer chasing - so the only way
+     * they learn of it is the job carrying the mark. A push can be missed,
+     * swiped, or arrive in a pocket; a red edge on the card is still there
+     * tomorrow morning.
+     */
+    /*
+     * Shown once the job has gone quiet, and not before.
+     *
+     * Six chips on every card would be noise on the ninety per cent of jobs
+     * moving normally, and noise is what the whole change is meant to remove.
+     * They appear on the jobs the nudge would chase - open, assigned, and
+     * untouched for two days - which is exactly the set the reminder is about,
+     * so the answer is in the same place as the question.
+     */
+    /*
+     * Measured from intake, because a job has no last-touched column.
+     *
+     * The server's sweep computes real idleness from audit_logs; the card
+     * cannot, and adding an updated_at to job_tickets to serve one badge would
+     * be a schema change for a cosmetic. Age since intake asks a question that
+     * is fair either way - this set has been in the shop two days and nobody
+     * has said why - and the chips are an offer, not an accusation. Answering
+     * removes them.
+     */
+    const inShopDays = job.createdAt
+        ? Math.floor((Date.now() - new Date(job.createdAt as any).getTime()) / 86400000)
+        : 0;
+    const idleDays = inShopDays;
+    const isStalled = idleDays >= 2
+        && !["Completed", "Delivered", "Cancelled"].includes(String(job.status));
+    const answeredReason = delayReasonLabel((job as any).delayReason);
+
+    const isChased = Boolean((job as any).customerChaseAt);
+    const chaseCount = Number((job as any).customerChaseCount) || 0;
+
     return (
         <motion.div
             variants={mobileCardVariants}
             onClick={() => onViewDetails(job)}
-            className="relative cursor-pointer overflow-hidden rounded-xl border border-slate-300 bg-white shadow-sm active:scale-[0.99] transition-transform"
+            className={cn(
+                "relative cursor-pointer overflow-hidden rounded-xl border bg-white shadow-sm active:scale-[0.99] transition-transform",
+                isChased ? "border-red-400 ring-1 ring-red-200" : "border-slate-300",
+            )}
         >
+            {isChased && (
+                <div className="flex items-center gap-1.5 bg-red-50 px-3 py-1.5">
+                    <AlertCircle className="h-3.5 w-3.5 shrink-0 text-red-600" />
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-red-700">
+                        Urgent — customer asking{chaseCount > 1 ? ` (${chaseCount}x)` : ""}
+                    </span>
+                </div>
+            )}
             {/* status accent bar */}
             <span className={cn("absolute left-0 top-0 h-full w-1", status.bar)} aria-hidden />
 
@@ -215,6 +269,64 @@ export function JobCardMobile({
                       * that is time-critical: somebody is on the phone now.
                       * Not shown once the job is delivered - there is nothing
                       * left for a technician to be woken about.
+                      */}
+                    {/*
+                      * The answer, or the question.
+                      *
+                      * Once a reason is given the chips go and the reason
+                      * stands in their place - it is what a manager reads and
+                      * what the counter repeats to a customer who rings, so it
+                      * has to be visible rather than only stored.
+                      */}
+                    {isStalled && answeredReason && (
+                        <p className="text-[10px] font-bold text-amber-700">
+                            {answeredReason}
+                        </p>
+                    )}
+                    {isStalled && !answeredReason && onSetDelayReason && (
+                        <div className="rounded-lg border border-amber-200 bg-amber-50/70 p-2">
+                            <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-amber-800">
+                                Not moved in {idleDays} days — why?
+                            </p>
+                            <div className="flex flex-wrap gap-1">
+                                {JOB_DELAY_REASONS.map((r) => (
+                                    <button
+                                        key={r.id}
+                                        type="button"
+                                        onClick={(event) => {
+                                            event.stopPropagation();
+                                            onSetDelayReason(job, r.id);
+                                        }}
+                                        className="rounded-md border border-amber-200 bg-white px-2 py-1.5 text-[10px] font-bold text-amber-900 active:scale-[0.97]"
+                                    >
+                                        {r.label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                    {/*
+                      * Who finished it, by name.
+                      *
+                      * A completion with a time and no author cannot be
+                      * questioned, and the first thing anyone asks of a closed
+                      * job is who closed it. The name is snapshotted on the
+                      * job, so it survives the person leaving.
+                      */}
+                    {(job as any).completedByName && (
+                        <p className="text-[10px] font-medium text-slate-500">
+                            Completed by {(job as any).completedByName}
+                        </p>
+                    )}
+                    {/*
+                      * The technician is told, not asked.
+                      *
+                      * They do not raise urgency - a technician marking their
+                      * own job important is not a customer chasing - so the
+                      * control is only handed to whoever fields the call. What
+                      * a technician gets is the card itself carrying the mark,
+                      * which is why this is read from the job rather than from
+                      * who is looking.
                       */}
                     {onCustomerChase && job.status !== "Delivered" && (
                         <Button

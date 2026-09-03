@@ -211,6 +211,12 @@ export const jobTicketsApi = {
      * Wakes the assigned technician by name and tells supervisors by broadcast.
      * See the route for why those are two different notifications.
      */
+    /** Answer the stale-job nudge with one of the fixed reasons. */
+    setDelayReason: (id: string, reason: string) =>
+        fetchApi<{ ok: boolean }>(`/job-tickets/${id}/delay-reason`, {
+            method: "POST",
+            body: JSON.stringify({ reason }),
+        }),
     customerChase: (id: string, body: { note?: string; urgent?: boolean } = {}) =>
         fetchApi<{ ok: boolean; notifiedTechnician: boolean }>(`/job-tickets/${id}/customer-chase`, {
             method: "POST",

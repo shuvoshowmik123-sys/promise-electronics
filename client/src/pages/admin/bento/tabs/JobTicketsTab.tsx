@@ -157,6 +157,19 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
      * fallback, so a Manager holding pos.sell qualifies without anyone having
      * to list every key here.
      */
+    /**
+     * Who may record that the customer is chasing.
+     *
+     * Not the bench. A technician marking their own job urgent is not a
+     * customer asking for it, and mixing the two makes the mark useless to the
+     * manager reading it. Whoever answers the phone or the counter raises it;
+     * the technician receives it as a red card and a push.
+     */
+    const canLogCustomerChase = isSuperAdmin
+        || hasPermission("serviceRequests.logCall" as any)
+        || hasPermission("jobs.assignTechnician" as any)
+        || hasPermission("jobs.edit" as any);
+
     const canBillAtPos =
         isSuperAdmin || hasPermission("pos" as any);
 
@@ -495,6 +508,23 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
      * holding the set still learns nothing. The note can be added on the job
      * itself; what has to happen now is that the right phone buzzes.
      */
+    /**
+     * One tap answers the nudge.
+     *
+     * No dialog and no free text. The person tapping this is at a bench with
+     * their hands full; anything longer than a tap gets postponed, and a
+     * postponed answer is the same as no answer.
+     */
+    const delayReasonMutation = useMutation({
+        mutationFn: ({ id, reason }: { id: string; reason: string }) =>
+            jobTicketsApi.setDelayReason(id, reason),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["jobTickets"] });
+            toast.success("Noted. The reminder will rest until this changes.");
+        },
+        onError: () => toast.error("Could not save that. Nothing was changed."),
+    });
+
     const customerChaseMutation = useMutation({
         mutationFn: ({ id, urgent }: { id: string; urgent?: boolean }) =>
             jobTicketsApi.customerChase(id, { urgent }),
@@ -1476,7 +1506,8 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
                                 currencySymbol={getCurrencySymbol()}
                                 billableJobIds={billableJobIds}
                                 onBillAtPos={canBillAtPos ? handleBillAtPos : undefined}
-                                onCustomerChase={(job) => customerChaseMutation.mutate({ id: job.id })}
+                                onSetDelayReason={(job, reason) => delayReasonMutation.mutate({ id: job.id, reason })}
+                                onCustomerChase={canLogCustomerChase ? ((job) => customerChaseMutation.mutate({ id: job.id })) : undefined}
                                 needsPartsDeclaration={jobNeedsPartsDeclaration}
                                 onDeclareParts={(job) => {
                                     setSelectedJob(job);

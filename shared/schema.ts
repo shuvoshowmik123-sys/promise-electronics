@@ -335,6 +335,38 @@ export const jobTickets = pgTable("job_tickets", {
   screenSize: text("screen_size"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   completedAt: timestamp("completed_at"),
+  /**
+   * Who said it was finished.
+   *
+   * Snapshotted, not joined: staff leave and accounts get renamed, and a job
+   * closed in March must still say who closed it in March. Mirrors
+   * partsDeclaredBy above, for the same reason - an entry nobody is attached
+   * to cannot be questioned.
+   */
+  completedByName: text("completed_by_name"),
+  completedByUserId: text("completed_by_user_id"),
+  /**
+   * That the customer is asking, kept on the job rather than only pushed.
+   *
+   * A notification is a moment; it is swiped away, or arrives while the phone
+   * is in a pocket. The fact that somebody is waiting has to outlive it. The
+   * count is what a manager reads: one customer asking is ordinary, the same
+   * customer asking three times is a stuck job nobody has escalated.
+   */
+  customerChaseAt: timestamp("customer_chase_at"),
+  customerChaseCount: integer("customer_chase_count").notNull().default(0),
+  customerChaseNote: text("customer_chase_note"),
+  /**
+   * Why this job is taking longer, from a fixed list.
+   *
+   * See shared/delay-reasons.ts for why it is a list and not a text box.
+   * delayReasonAt is what silences the stale-job nudge, kept separate from the
+   * reason so a job nudged again next week can tell a fresh answer from an old
+   * one.
+   */
+  delayReason: text("delay_reason"),
+  delayReasonAt: timestamp("delay_reason_at"),
+  delayReasonBy: text("delay_reason_by"),
   deadline: timestamp("deadline"), // Direct user-selected deadline
   slaDeadline: timestamp("sla_deadline"), // System-calculated corporate strict SLA
   notes: text("notes"),

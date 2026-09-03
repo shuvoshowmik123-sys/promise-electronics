@@ -117,13 +117,26 @@ function pathInNgEvidenceFolder(filePath: string): boolean {
 
 /** Verify each fileId via ImageKit API; store canonical metadata only. */
 export async function validateNgEvidenceAttachments(raw: unknown): Promise<NgEvidenceAttachment[]> {
-  if (!Array.isArray(raw) || raw.length === 0) {
-    throw new NgReportServiceError(
-      400,
-      "At least one evidence attachment is required (ImageKit fileId + url).",
-      "EVIDENCE_REQUIRED",
-    );
+  /*
+   * A photo is welcome and is not demanded.
+   *
+   * Requiring one assumed the failure is always visible. Much of what makes a
+   * set unrepairable photographs as nothing: a board that draws no current, a
+   * panel with no image, a fault that only shows with the set powered on a
+   * bench. A technician holding an obviously dead television had to invent a
+   * picture of it to file the report - so either the report did not get filed,
+   * or the attachment is a photograph of a switched-off screen that tells a
+   * reviewer nothing.
+   *
+   * Everything below still applies to whatever IS attached: the count cap, the
+   * folder, the ImageKit verification. Optional means the list may be empty,
+   * not that an unchecked file is accepted.
+   */
+  if (raw === null || raw === undefined) return [];
+  if (!Array.isArray(raw)) {
+    throw new NgReportServiceError(400, "Evidence attachments must be a list.", "EVIDENCE_INVALID");
   }
+  if (raw.length === 0) return [];
   if (raw.length > MAX_EVIDENCE) {
     throw new NgReportServiceError(400, "Maximum 12 evidence attachments allowed.", "EVIDENCE_LIMIT");
   }
@@ -236,17 +249,32 @@ export function validateSubmitFields(input: SubmitNgReportInput): void {
       "FAILED_REPAIR_TYPE",
     );
   }
-  const diagnosis = String(input.diagnosis || "").trim();
-  if (diagnosis.length < 10) {
-    throw new NgReportServiceError(400, "diagnosis must be at least 10 characters.", "DIAGNOSIS");
+  /*
+   * One written answer, accepted under either name.
+   *
+   * The form asked for a diagnosis and technical notes separately, and a
+   * technician at a bench with a customer waiting writes the same sentence
+   * twice or pads one to clear its minimum. Neither produces a better record.
+   * The screen now asks once - what was found and what was done - and both
+   * columns are stored, because both are NOT NULL and every existing report,
+   * export and review screen reads one or the other.
+   *
+   * Either field satisfies the requirement, so an older client that still
+   * posts two keeps working unchanged.
+   */
+  const written = String(input.technicalNotes || input.diagnosis || "").trim();
+  const diagnosis = String(input.diagnosis || "").trim() || written;
+  if (written.length < 10) {
+    throw new NgReportServiceError(
+      400,
+      "Say what you found and what you did - at least 10 characters.",
+      "TECHNICAL_NOTES",
+    );
   }
   if (diagnosis.length > 4000) {
     throw new NgReportServiceError(400, "diagnosis is too long.", "DIAGNOSIS");
   }
-  const notes = String(input.technicalNotes || "").trim();
-  if (notes.length < 10) {
-    throw new NgReportServiceError(400, "technicalNotes must be at least 10 characters.", "TECHNICAL_NOTES");
-  }
+  const notes = written;
   if (notes.length > 8000) {
     throw new NgReportServiceError(400, "technicalNotes is too long.", "TECHNICAL_NOTES");
   }
