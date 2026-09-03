@@ -2,8 +2,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { createPortal } from "react-dom";
 import {
     Activity, Package, DollarSign, Users, Clock, AlertCircle,
-    TrendingUp, CheckCircle2, ChevronRight, X, ShoppingCart, ChevronDown, RefreshCw, ShieldAlert
-} from "lucide-react";
+    TrendingUp, CheckCircle2, ChevronRight, X, ShoppingCart, ChevronDown, RefreshCw, ShieldAlert, PackageCheck } from "lucide-react";
 import {
     AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell
 } from "recharts";
@@ -15,6 +14,7 @@ import {
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
+import { fetchApi } from "@/lib/api/httpClient";
 import { adminAuthApi, type AdminAggregatedDashboard, type AdminDashboardJobSummary } from "@/lib/api";
 import { useAdminAuth } from "@/contexts/AdminAuthContext";
 import { format } from "date-fns";
@@ -134,6 +134,32 @@ export default function DashboardTab({ onNavigate }: DashboardTabProps) {
         refetchOnReconnect: true,
         placeholderData: () => getDashboardSnapshot(),
     });
+
+    /**
+     * Televisions in the shop that nobody has booked in.
+     *
+     * Conversion is blocked until custody is confirmed, which is correct — a
+     * job should not exist for a set nobody is holding. But nothing noticed
+     * when the step after custody never got taken: a driver confirms
+     * collection, the request moves to picked_up, and the set is then
+     * physically on a shelf while appearing on no technician's list and in no
+     * job queue, because every other view here looks at jobs and this is the
+     * one case where no job exists.
+     *
+     * Deliberately a number on the screen rather than only a notification. A
+     * push is swiped away and gone; a count sitting on the page somebody opens
+     * every morning stays there until the work is done.
+     *
+     * Silent when zero. A row that reads "0 waiting" every day is furniture,
+     * and furniture is not read on the day it finally says 3.
+     */
+    const { data: unbooked } = useQuery<{ count: number }>({
+        queryKey: ["service-requests", "unbooked-count"],
+        queryFn: () => fetchApi<{ count: number }>("/admin/service-requests/unbooked-count"),
+        refetchInterval: 120000,
+        retry: false,
+    });
+    const unbookedCount = unbooked?.count ?? 0;
 
     const data = dashboardData || getDashboardSnapshot();
 
@@ -448,6 +474,30 @@ export default function DashboardTab({ onNavigate }: DashboardTabProps) {
 
             <MobileScrollContent className="pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:hidden">
                 {refreshNotice}
+                {/*
+                  * Above the pulse, because it is the only thing here that is
+                  * a television sitting untouched in the building rather than a
+                  * number about work already under way.
+                  */}
+                {unbookedCount > 0 && (
+                    <button
+                        type="button"
+                        onClick={() => navigateTo("service-requests")}
+                        className="mb-2 flex w-full items-center gap-2.5 rounded-2xl border border-red-200 bg-red-50 px-3 py-3 text-left active:scale-[0.99]"
+                    >
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-red-100">
+                            <PackageCheck className="h-4 w-4 text-red-600" />
+                        </span>
+                        <span className="min-w-0 flex-1">
+                            <span className="block text-sm font-black text-red-800">
+                                {unbookedCount} device{unbookedCount === 1 ? "" : "s"} not booked in
+                            </span>
+                            <span className="block text-[11px] font-medium text-red-700">
+                                Received but no job created — a technician cannot see {unbookedCount === 1 ? "it" : "them"} yet.
+                            </span>
+                        </span>
+                    </button>
+                )}
                 {mobileView === "overview" && (
                     <>
                         <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">

@@ -2111,6 +2111,41 @@ if (process.env.NODE_ENV !== 'production') {
 
 // ─── Intake Summary (page-scoped lane enrichment; HOTFIX-2) ───
 
+/**
+ * GET /api/admin/service-requests/unbooked-count — devices in the shop with no job
+ *
+ * The gap this answers: conversion is deliberately blocked until custody is
+ * confirmed, which is right, but nothing noticed when the step after custody
+ * never got taken. A driver confirms collection, the request moves to
+ * picked_up, and the television is then physically on a shelf while appearing
+ * on no technician's list and in no job queue — because every other view in the
+ * system looks at jobs, and this is exactly the case where no job exists.
+ *
+ * A count rather than a notification. A push can be swiped away and forgotten;
+ * a number on a screen somebody already opens every morning does not go away
+ * until the work is done. The nudge pokes, this one sits there.
+ *
+ * Cancelled and rejected requests are excluded — they legitimately never become
+ * jobs, and counting them would make the number permanently wrong, which is how
+ * a number stops being read.
+ */
+router.get('/api/admin/service-requests/unbooked-count', requireAdminAuth, requireGranularPermission('serviceRequests.view'), async (req: Request, res: Response) => {
+    try {
+        const rows = await db.execute(sql`
+            SELECT count(*)::int AS n
+            FROM service_requests
+            WHERE stage IN ('picked_up', 'device_received')
+              AND (converted_job_id IS NULL OR converted_job_id = '')
+              AND COALESCE(status, '') NOT IN ('Cancelled', 'Rejected', 'Closed')
+        `);
+        const count = (((rows as any).rows ?? rows) as any[])[0]?.n ?? 0;
+        res.json({ count });
+    } catch (error: unknown) {
+        logRouteError('GET /api/admin/service-requests/unbooked-count', req, error);
+        res.status(500).json({ error: 'Failed to count unbooked devices' });
+    }
+});
+
 router.get('/api/admin/service-requests/intake-summary', requireAdminAuth, requireGranularPermission('serviceRequests.view'), async (req: Request, res: Response) => {
     try {
         // Required: ids of the currently displayed page only. Empty ids → empty summary (never load-all).

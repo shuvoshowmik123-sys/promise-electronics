@@ -83,6 +83,23 @@ const SHIFT_SNAPSHOT_MIN = 20 * 60 + 30;    // 20:30
 /** The morning after, once people are in and can act on it. */
 const MORNING_REPORT_MIN = 9 * 60 + 30;     // 09:30
 
+/**
+ * A television in the shop with no job ticket behind it.
+ *
+ * Conversion is deliberately blocked until custody is confirmed, which is
+ * right — a job should not exist for a set nobody is holding. What was missing
+ * is anything noticing when the step after custody never gets taken. The driver
+ * confirms collection, the request moves to picked_up, and the set is then
+ * physically on a shelf while appearing on no technician's list, in no job
+ * queue, and in no sweep — because every other sweep here looks at jobs, and
+ * this is precisely the case where no job exists.
+ *
+ * Two hours rather than a day. The set is already in the building; this is not
+ * a repair running late, it is a repair that has not started and nobody knows
+ * it exists.
+ */
+const UNBOOKED_DEVICE_HOURS = 2;
+
 /** A job untouched this long is nudged; twice as long and a manager hears. */
 const STALE_JOB_DAYS = 2;
 const STALE_JOB_ESCALATE_DAYS = 4;
@@ -106,7 +123,8 @@ export type ReminderKind =
     | "stale_job"
     | "stale_job_escalation"
     | "pending_part_cost"
-    | "shift_close_report";
+    | "shift_close_report"
+    | "device_not_booked_in";
 
 let schedulerTimer: ReturnType<typeof setInterval> | null = null;
 let sweepInFlight = false;
@@ -439,6 +457,63 @@ async function sweepPendingPartCosts(runDay: string, minutes: number): Promise<v
  * manager — none of which the assigned technician can clear by being reminded
  * again.
  */
+/**
+ * Devices received but never booked in.
+ *
+ * Counts only what is genuinely stranded: custody confirmed, no job created,
+ * and the request not cancelled or closed by some other route. Cancelled
+ * requests legitimately never become jobs, and chasing them would teach the
+ * reader that this reminder is usually wrong — which is how a reminder stops
+ * being read.
+ *
+ * Sent as one message naming the count, not one per device. Three sets arriving
+ * on the same van is one thing to go and do, not three interruptions.
+ */
+async function sweepUnbookedDevices(runDay: string): Promise<void> {
+    const rows = await db.execute(sql`
+        SELECT sr.id, sr.customer_name, sr.brand, sr.stage,
+               COALESCE(
+                   (SELECT MAX(e.occurred_at) FROM service_request_events e
+                     WHERE e.service_request_id = sr.id),
+                   sr.created_at
+               ) AS custody_at
+        FROM service_requests sr
+        WHERE sr.stage IN ('picked_up', 'device_received')
+          AND (sr.converted_job_id IS NULL OR sr.converted_job_id = '')
+          AND COALESCE(sr.status, '') NOT IN ('Cancelled', 'Rejected', 'Closed')
+          AND COALESCE(
+                  (SELECT MAX(e.occurred_at) FROM service_request_events e
+                    WHERE e.service_request_id = sr.id),
+                  sr.created_at
+              ) < NOW() - (${UNBOOKED_DEVICE_HOURS} * INTERVAL '1 hour')
+        ORDER BY custody_at ASC
+        LIMIT 50
+    `);
+
+    const stranded = ((rows as any).rows ?? rows) as any[];
+    if (stranded.length === 0) return;
+
+    const first = stranded[0];
+    const more = stranded.length > 1 ? ` and ${stranded.length - 1} more` : "";
+    const what = `${first.brand ?? "A device"} from ${first.customer_name ?? "a customer"}`;
+
+    /*
+     * Targeted on the day plus the count, so the message repeats when the pile
+     * changes but not while it stays the same. A manager who has been told
+     * about three devices does not need telling again about the same three an
+     * hour later; four is new information.
+     */
+    for (const managerId of await managerIds()) {
+        await sendOnce(runDay, "device_not_booked_in", managerId, {
+            title: stranded.length === 1
+                ? "A device is in the shop with no job"
+                : `${stranded.length} devices are in the shop with no job`,
+            message: `${what}${more} — received but not booked in. Convert it so a technician can see it.`,
+            link: "/admin#service-requests",
+        }, String(stranded.length));
+    }
+}
+
 async function sweepStaleJobs(runDay: string, minutes: number): Promise<void> {
     if (minutes < EVENING_MIN) return;
 
@@ -669,8 +744,17 @@ export async function runNudgeSweep(): Promise<void> {
      */
     const closed = await isNonWorkingDay(runDay);
 
+    /*
+     * Runs on rest days too, beside stale jobs and for the same reason: a
+     * television locked in the shop with no job behind it is not less stranded
+     * because today is Friday, and unlike attendance this is about the shop's
+     * work rather than somebody's duty.
+     */
     const sweeps = closed
-        ? ([["STALE_JOB_SWEEP_FAILED", () => sweepStaleJobs(runDay, minutes)]] as const)
+        ? ([
+            ["UNBOOKED_DEVICE_SWEEP_FAILED", () => sweepUnbookedDevices(runDay)],
+            ["STALE_JOB_SWEEP_FAILED", () => sweepStaleJobs(runDay, minutes)],
+        ] as const)
         : ([
             ["ATTENDANCE_SWEEP_FAILED", () => sweepAttendance(runDay, minutes)],
             ["PARTS_SWEEP_FAILED", () => sweepPartsDeclaration(runDay, minutes)],
@@ -678,6 +762,7 @@ export async function runNudgeSweep(): Promise<void> {
             ["SHIFT_SNAPSHOT_FAILED", () => snapshotShiftClose(runDay, minutes)],
             ["MORNING_REPORT_FAILED", () => sendMorningReport(runDay, minutes)],
             ["STALE_JOB_SWEEP_FAILED", () => sweepStaleJobs(runDay, minutes)],
+            ["UNBOOKED_DEVICE_SWEEP_FAILED", () => sweepUnbookedDevices(runDay)],
         ] as const);
 
     for (const [code, sweep] of sweeps) {
