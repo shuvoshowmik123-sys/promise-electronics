@@ -1,6 +1,6 @@
 import { motion } from "framer-motion";
 import type { MouseEvent } from "react";
-import { CreditCard, PackagePlus, User, UserCheck, PhoneCall, AlertCircle } from "lucide-react";
+import { CreditCard, PackagePlus, User, UserCheck, PhoneCall, AlertCircle, Link as LinkIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -54,6 +54,10 @@ interface JobCardMobileProps {
     onCustomerChase?: (job: JobTicket) => void;
     /** Answer the stale-job nudge with one of the fixed reasons. */
     onSetDelayReason?: (job: JobTicket, reason: string) => void;
+    /** Set when the set is expected back, in days from today. */
+    onSetExpectedDate?: (job: JobTicket, days: number) => void;
+    /** Mint and copy the customer's tracking link. */
+    onCopyTrackLink?: (job: JobTicket) => void;
     /** True when this job has no parts recorded — what the nightly nudge chases. */
     needsPartsDeclaration?: boolean;
     onDeclareParts?: (job: JobTicket) => void;
@@ -83,6 +87,8 @@ export function JobCardMobile({
     onBillAtPos,
     onCustomerChase,
     onSetDelayReason,
+    onSetExpectedDate,
+    onCopyTrackLink,
     needsPartsDeclaration = false,
     onDeclareParts,
 }: JobCardMobileProps) {
@@ -285,6 +291,45 @@ export function JobCardMobile({
                       * left for a technician to be woken about.
                       */}
                     {/*
+                      * When it is expected back, asked of whoever has seen it.
+                      *
+                      * Not at intake: the counter is guessing, nobody has
+                      * opened the set yet, and a date invented at the door is
+                      * the one the customer is later held to. Offered until
+                      * somebody answers, then shown, and always revisable - an
+                      * estimate that cannot be corrected turns into a broken
+                      * promise the first time a part is late.
+                      */}
+                    {onSetExpectedDate && !["Completed", "Delivered", "Cancelled"].includes(String(job.status)) && (
+                        job.deadline ? (
+                            <p className="text-[10px] font-medium text-slate-500">
+                                Expected {new Date(job.deadline as any).toLocaleDateString()}
+                            </p>
+                        ) : (
+                            <div className="flex items-center gap-1">
+                                <span className="text-[10px] font-bold text-slate-400">Ready in:</span>
+                                {[
+                                    { d: 0, label: "Today" },
+                                    { d: 1, label: "Tomorrow" },
+                                    { d: 3, label: "3 days" },
+                                    { d: 7, label: "1 week" },
+                                ].map((o) => (
+                                    <button
+                                        key={o.d}
+                                        type="button"
+                                        onClick={(event) => {
+                                            event.stopPropagation();
+                                            onSetExpectedDate(job, o.d);
+                                        }}
+                                        className="rounded-md border border-slate-200 bg-white px-1.5 py-1 text-[10px] font-bold text-slate-600 active:scale-[0.97]"
+                                    >
+                                        {o.label}
+                                    </button>
+                                ))}
+                            </div>
+                        )
+                    )}
+                    {/*
                       * The answer, or the question.
                       *
                       * Once a reason is given the chips go and the reason
@@ -342,6 +387,25 @@ export function JobCardMobile({
                       * which is why this is read from the job rather than from
                       * who is looking.
                       */}
+                    {/*
+                      * The customer's link, copied not shown.
+                      *
+                      * It is 64 characters of hex; nobody reads that down a
+                      * phone. This puts it on the clipboard so it can go into
+                      * whatever the counter already uses to message people.
+                      */}
+                    {onCopyTrackLink && !["Cancelled"].includes(String(job.status)) && (
+                        <Button
+                            onClick={(event) => {
+                                event.stopPropagation();
+                                onCopyTrackLink(job);
+                            }}
+                            className="h-9 w-full rounded-lg gap-1.5 border border-slate-200 bg-white text-[11px] font-bold text-slate-600 shadow-none hover:bg-slate-50"
+                        >
+                            <LinkIcon className="w-3.5 h-3.5" />
+                            Copy tracking link
+                        </Button>
+                    )}
                     {onCustomerChase && job.status !== "Delivered" && (
                         <Button
                             disabled={chaseOnCooldown}

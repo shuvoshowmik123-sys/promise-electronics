@@ -211,6 +211,9 @@ export const jobTicketsApi = {
      * Wakes the assigned technician by name and tells supervisors by broadcast.
      * See the route for why those are two different notifications.
      */
+    /** Mint the customer's tracking link. Returns the raw URL once. */
+    issueTrackLink: (id: string) =>
+        fetchApi<{ url: string }>(`/job-tickets/${id}/track-link`, { method: "POST" }),
     /** Answer the stale-job nudge with one of the fixed reasons. */
     setDelayReason: (id: string, reason: string) =>
         fetchApi<{ ok: boolean }>(`/job-tickets/${id}/delay-reason`, {

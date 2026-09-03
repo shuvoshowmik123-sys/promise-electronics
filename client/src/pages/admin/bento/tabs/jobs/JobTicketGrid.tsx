@@ -77,6 +77,8 @@ interface JobTicketGridProps {
     onCustomerChase?: (job: JobTicket) => void;
     /** Passed straight through to the card; see JobCardMobile. */
     onSetDelayReason?: (job: JobTicket, reason: string) => void;
+    onSetExpectedDate?: (job: JobTicket, days: number) => void;
+    onCopyTrackLink?: (job: JobTicket) => void;
     /** Decides whether a job still owes a parts declaration. */
     needsPartsDeclaration?: (job: JobTicket) => boolean;
     onDeclareParts?: (job: JobTicket) => void;
@@ -105,6 +107,8 @@ export function JobTicketGrid({
     onBillAtPos,
     onCustomerChase,
     onSetDelayReason,
+    onSetExpectedDate,
+    onCopyTrackLink,
     needsPartsDeclaration,
     onDeclareParts,
 }: JobTicketGridProps) {
@@ -139,6 +143,8 @@ export function JobTicketGrid({
                         onBillAtPos={onBillAtPos}
                         onCustomerChase={onCustomerChase}
                         onSetDelayReason={onSetDelayReason}
+                        onSetExpectedDate={onSetExpectedDate}
+                        onCopyTrackLink={onCopyTrackLink}
                         needsPartsDeclaration={needsPartsDeclaration?.(job) ?? false}
                         onDeclareParts={onDeclareParts}
                     />

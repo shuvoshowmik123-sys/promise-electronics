@@ -515,6 +515,56 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
      * their hands full; anything longer than a tap gets postponed, and a
      * postponed answer is the same as no answer.
      */
+    /**
+     * When the set is expected back, in one tap.
+     *
+     * Set from the card rather than at intake. The counter is guessing - nobody
+     * has opened the television yet - and a date invented at the door is the
+     * one the customer is later held to. The person who has just looked at it
+     * knows, and can revise it honestly as the repair goes on.
+     *
+     * Writes the existing deadline column, so no schema change and everything
+     * that already reads a deadline keeps working.
+     */
+    const expectedDateMutation = useMutation({
+        mutationFn: ({ id, days }: { id: string; days: number }) => {
+            const d = new Date();
+            d.setDate(d.getDate() + days);
+            d.setHours(18, 0, 0, 0);
+            return jobTicketsApi.update(id, { deadline: d.toISOString() } as any);
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["jobTickets"] });
+            toast.success("Expected date set. The customer's tracking page shows it.");
+        },
+        onError: () => toast.error("Could not set that date."),
+    });
+
+    /**
+     * Hand the customer their link.
+     *
+     * Copied rather than shown, because it is 64 characters of hex that nobody
+     * is going to read down a phone. It goes into an SMS or a WhatsApp message
+     * from whatever the counter already uses.
+     */
+    const trackLinkMutation = useMutation({
+        mutationFn: (id: string) => jobTicketsApi.issueTrackLink(id),
+        onSuccess: async (result: any) => {
+            const url = result?.url;
+            if (!url) return;
+            try {
+                await navigator.clipboard.writeText(url);
+                toast.success("Tracking link copied. Send it to the customer.");
+            } catch {
+                // Clipboard is refused on some webviews and on http origins.
+                // Showing the link is worse than copying it and better than a
+                // silent failure - it can still be read out or long-pressed.
+                toast.info(url, { duration: 15000 });
+            }
+        },
+        onError: () => toast.error("Could not create the link."),
+    });
+
     const delayReasonMutation = useMutation({
         mutationFn: ({ id, reason }: { id: string; reason: string }) =>
             jobTicketsApi.setDelayReason(id, reason),
@@ -1529,6 +1579,8 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
                                 billableJobIds={billableJobIds}
                                 onBillAtPos={canBillAtPos ? handleBillAtPos : undefined}
                                 onSetDelayReason={(job, reason) => delayReasonMutation.mutate({ id: job.id, reason })}
+                                onSetExpectedDate={(job, days) => expectedDateMutation.mutate({ id: job.id, days })}
+                                onCopyTrackLink={(job) => trackLinkMutation.mutate(job.id)}
                                 onCustomerChase={canLogCustomerChase ? ((job) => customerChaseMutation.mutate({ id: job.id })) : undefined}
                                 needsPartsDeclaration={jobNeedsPartsDeclaration}
                                 onDeclareParts={(job) => {
