@@ -536,7 +536,29 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
                     : "Nobody is assigned yet — managers notified.",
             );
         },
-        onError: () => toast.error("Could not record that. Nothing was sent."),
+        onError: (err: any) => {
+            /*
+             * A cooldown is not a failure.
+             *
+             * The server refuses a second chase within half an hour, and
+             * reporting that as "could not record" reads as a broken button to
+             * somebody standing with a customer. It worked; it is simply
+             * already done, and saying when tells them what they actually
+             * wanted to know.
+             */
+            const mins = err?.body?.retryAfterSec
+                ? Math.ceil(err.body.retryAfterSec / 60)
+                : null;
+            if (err?.status === 429 || err?.body?.code === "CHASE_COOLDOWN") {
+                toast.info(
+                    mins
+                        ? `Already sent. You can send another in ${mins} minute${mins === 1 ? "" : "s"}.`
+                        : "Already sent recently.",
+                );
+                return;
+            }
+            toast.error("Could not record that. Nothing was sent.");
+        },
     });
 
     const handleBillAtPos = (job: JobTicket) => {

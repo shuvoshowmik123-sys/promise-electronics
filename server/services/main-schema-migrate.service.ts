@@ -71,7 +71,7 @@ const ADVISORY_LOCK_KEY = "promise_main_schema_migrate";
 const LOCK_WAIT_BUDGET_MS = parseInt(process.env.MAIN_MIGRATION_LOCK_WAIT_MS || "60000", 10);
 const LOCK_POLL_INTERVAL_MS = parseInt(process.env.MAIN_MIGRATION_LOCK_POLL_MS || "1000", 10);
 
-export const REQUIRED_MAIN_SCHEMA_VERSION = "2026_09_03_job_delay_reason";
+export const REQUIRED_MAIN_SCHEMA_VERSION = "2026_09_03_job_track_token";
 
 export const MAIN_SCHEMA_MIGRATIONS: MainSchemaMigration[] = [
   {
@@ -2990,6 +2990,35 @@ export const MAIN_SCHEMA_MIGRATIONS: MainSchemaMigration[] = [
         CREATE INDEX IF NOT EXISTS idx_job_tickets_delay_answer
         ON job_tickets (delay_reason_at)
         WHERE delay_reason_at IS NOT NULL
+      `);
+    },
+  },
+  {
+    id: "2026_09_03_job_track_token",
+    description: "job_tickets: an unguessable tracking token for the customer link",
+    up: async (client) => {
+      /**
+       * A tracking link that cannot be counted through.
+       *
+       * The public tracking endpoint took the job id, and job ids are
+       * sequential — JOB-2026-0001, 0002, 0003. Anyone could walk the sequence
+       * and read every set in the shop: brand, size, and repair status, with no
+       * login. A competitor could measure the day's intake from a phone.
+       *
+       * Only the SHA-256 goes in this column. The raw token is generated once,
+       * handed to the customer in their link, and never stored — so a copy of
+       * this table is not a set of working links, the same rule the technician
+       * QR tokens already follow in external-qr-tracking.
+       *
+       * Nullable, and minted on demand rather than backfilled: a token issued
+       * for a job nobody will ever ask about is a credential created for no
+       * reason. Old jobs get one the first time somebody asks for the link.
+       */
+      await client.query(`ALTER TABLE job_tickets ADD COLUMN IF NOT EXISTS track_token_hash TEXT`);
+      await client.query(`
+        CREATE UNIQUE INDEX IF NOT EXISTS uidx_job_tickets_track_token
+        ON job_tickets (track_token_hash)
+        WHERE track_token_hash IS NOT NULL
       `);
     },
   },

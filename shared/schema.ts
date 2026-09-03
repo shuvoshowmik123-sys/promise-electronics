@@ -367,6 +367,12 @@ export const jobTickets = pgTable("job_tickets", {
   delayReason: text("delay_reason"),
   delayReasonAt: timestamp("delay_reason_at"),
   delayReasonBy: text("delay_reason_by"),
+  /**
+   * SHA-256 of the customer's tracking token. Never the token itself.
+   *
+   * Minted on demand, so a job nobody asks about never gets a credential.
+   */
+  trackTokenHash: text("track_token_hash"),
   deadline: timestamp("deadline"), // Direct user-selected deadline
   slaDeadline: timestamp("sla_deadline"), // System-calculated corporate strict SLA
   notes: text("notes"),

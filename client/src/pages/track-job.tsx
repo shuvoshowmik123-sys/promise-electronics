@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "wouter";
 import { useCustomerLanguage } from "@/contexts/CustomerLanguageContext";
 import { useQuery } from "@tanstack/react-query";
+import { customerStatusMessage, expectedReadyMessage } from "@shared/delay-reasons";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -20,6 +21,9 @@ interface JobTrackingInfo {
   completedAt: string | null;
   estimatedCost: string | null;
   deadline: string | null;
+  /** The estimate, worded by expectedReadyMessage. Never a promise. */
+  expectedReadyAt?: string | null;
+  delayReason?: string | null;
 }
 
 const statusConfig: Record<string, { icon: React.ReactNode; color: string; bgColor: string; label: string; description: string }> = {
@@ -121,6 +125,12 @@ function getStepIndex(status: string | undefined) {
 }
 
 function TrackerBody({ job, statusInfo, variant }: { job: JobTrackingInfo; statusInfo: StatusInfo; variant: 'desktop' | 'mobile' }) {
+  /*
+   * Computed here so desktop and mobile cannot say different things. Both
+   * layouts render through this one body.
+   */
+  const friendlyMessage = customerStatusMessage(job.status, job.delayReason ?? null);
+  const expectedLine = expectedReadyMessage(job.expectedReadyAt ?? job.deadline ?? null);
   const currentStep = getStepIndex(job.status);
   const vStep = getVerticalStepIndex(job.status);
   const suffix = variant === 'mobile' ? '-mobile' : '';
@@ -289,10 +299,26 @@ function TrackerBody({ job, statusInfo, variant }: { job: JobTrackingInfo; statu
           </div>
         )}
 
+        {/*
+          * What the shop would actually say, and when it expects to be done.
+          *
+          * statusInfo.description was this page's own copy of the wording and
+          * it promised things: "will be assigned shortly" commits to a time
+          * nobody set, and an exclamation mark is a poor thing to show somebody
+          * who has waited a week. It also never mentioned a delay or apologised
+          * for one, which is the case that actually produces the phone call.
+          *
+          * The date line is separate and always says "expected". An estimate
+          * can be revised; a promise cannot be, without the shop breaking its
+          * word.
+          */}
         <div className="text-center mb-8">
           <h3 className="text-xl font-bold text-slate-800 mb-2">{statusInfo.label}</h3>
+          {expectedLine && (
+            <p className="mb-2 text-base font-bold text-slate-700">{expectedLine}</p>
+          )}
           <p className="text-slate-500 text-sm leading-relaxed max-w-sm mx-auto">
-            {statusInfo.description}
+            {friendlyMessage}
           </p>
         </div>
 
@@ -369,10 +395,21 @@ export default function TrackJobPage() {
     if (id) setJobId(id);
   }, [params?.id]);
 
+  /*
+   * Fetched by token, not by job id.
+   *
+   * Job ids run in sequence, so the old lookup let anyone count through
+   * JOB-2026-0001, 0002, 0003 and read every set in the shop. The token is 32
+   * random bytes and the server holds only its hash.
+   *
+   * A 404 here is also how a finished job ends: the link keeps working for a
+   * week after the set goes back and then stops, so the page's not-found state
+   * is the normal end of a link's life rather than only an error.
+   */
   const { data: job, isLoading, error } = useQuery<JobTrackingInfo>({
     queryKey: ["job-tracking", jobId],
     queryFn: async () => {
-      const response = await fetch(`/api/job-tickets/track/${jobId}`);
+      const response = await fetch(`/api/public/job-track/${jobId}`);
       if (!response.ok) {
         throw new Error("Job not found");
       }
@@ -381,6 +418,21 @@ export default function TrackJobPage() {
     enabled: !!jobId,
     refetchInterval: 30000,
   });
+
+  /*
+   * One sentence, written once, in shared/delay-reasons.
+   *
+   * This page used to keep its own statusConfig descriptions, so the words a
+   * customer read here and the words the shop chose lived in two places and
+   * drifted. It also promised: "will be assigned shortly" commits to a time
+   * nobody set, and "Your repair is complete!" is a cheerful line to show
+   * somebody who has waited a week. The shared copy apologises where an apology
+   * is owed and never promises a date.
+   */
+  const friendlyMessage = job
+    ? customerStatusMessage(job.status, (job as any).delayReason)
+    : null;
+  const expectedLine = job ? expectedReadyMessage((job as any).expectedReadyAt) : null;
 
   const statusInfo = job ? (statusConfig[job.status] ?? statusConfig["Pending"]) : statusConfig["Pending"];
 

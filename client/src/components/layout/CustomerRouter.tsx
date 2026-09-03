@@ -181,6 +181,17 @@ export function CustomerRouter() {
                                 <Route path="/track/:id">
                                     <CustomerErrorBoundary fallbackTitle="Track Job Error"><TrackJobPage /></CustomerErrorBoundary>
                                 </Route>
+                                {/*
+                                  * The customer's tracking link.
+                                  *
+                                  * Short on purpose: it gets written on a job
+                                  * card, read down a phone, and typed by people
+                                  * who are not looking at a keyboard. /t is as
+                                  * few characters as the path can be.
+                                  */}
+                                <Route path="/t/:id">
+                                    <CustomerErrorBoundary fallbackTitle="Track Job Error"><TrackJobPage /></CustomerErrorBoundary>
+                                </Route>
                                 {/* External technician printed QR — opaque token, no self-service */}
                                 <Route path="/ext-track/:token">
                                     <CustomerErrorBoundary fallbackTitle="Shop Track Error"><TrackExternalQrPage /></CustomerErrorBoundary>

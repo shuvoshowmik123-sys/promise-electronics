@@ -8,6 +8,7 @@ import { storage } from '../storage.js';
 import { jobRepo, serviceRequestRepo, userRepo, attendanceRepo, systemRepo, settingsRepo, notificationRepo } from '../repositories/index.js';
 import { insertJobTicketSchema } from '../../shared/schema.js';
 import { isJobDelayReason, JOB_DELAY_REASONS } from '../../shared/delay-reasons.js';
+import { hashTrackToken, isWellFormedTrackToken, trackLinkExpired, issueTrackToken } from '../services/job-track-token.service.js';
 
 import { notifyAdminUpdate, notifyCustomerUpdate } from './middleware/sse-broker.js';
 import { auditLogger } from '../utils/auditLogger.js';
@@ -18,6 +19,7 @@ import { publishAdminNotificationEvent, publishJobTicketEvent } from '../service
 import { logModelCase } from '../brain/kg.service.js';
 import { bindCustomerToJob, recordJobClosed } from '../services/canonical-customer.service.js';
 import { db } from '../db.js';
+import * as schema from '../../shared/schema.js';
 import { localPurchases } from '../../shared/schema.js';
 import { eq, sql } from 'drizzle-orm';
 import {
@@ -1913,7 +1915,120 @@ router.get('/api/public/qr', async (req: Request, res: Response) => {
  * GET /api/job-tickets/track/:id - Public job tracking (for QR code scanning)
  * Allowlist only — no serials, estimatedCost, phone, notes, or money fields.
  */
-router.get('/api/job-tickets/track/:id', async (req: Request, res: Response) => {
+/**
+ * POST /api/job-tickets/:id/track-link — hand the customer a link
+ *
+ * Mints the token the first time it is asked for, rather than at intake. A
+ * token created for a job nobody ever asks about is a credential issued for no
+ * reason, and every credential that exists is one that can leak.
+ *
+ * Asking again re-mints and the previous link stops working. That is
+ * deliberate: a ticket is usually reprinted because the first one went astray,
+ * and a link nobody can account for should not keep working.
+ *
+ * The raw token is returned once, here, and never stored in readable form.
+ */
+router.post('/api/job-tickets/:id/track-link', requireAdminAuth, requireAnyGranularPermission(['jobs.view', 'jobs.edit', 'serviceRequests.logCall']), async (req: Request, res: Response) => {
+    try {
+        const job = await jobRepo.getJobTicket(req.params.id);
+        if (!job) return res.status(404).json({ error: 'Job not found' });
+
+        const raw = await issueTrackToken(job.id);
+        const base = process.env.PUBLIC_SITE_URL || 'https://promiseelectronics.com';
+
+        auditLogger.log({
+            userId: (req as any).user?.id || 'unknown',
+            action: 'JOB_TRACK_LINK_ISSUED',
+            entity: 'JobTicket',
+            entityId: job.id,
+            details: 'Customer tracking link issued',
+            req,
+            severity: 'info',
+        });
+
+        res.json({ url: `${base}/t/${raw}` });
+    } catch (error) {
+        console.error('[Jobs.TrackLink]', (error as Error).message);
+        res.status(500).json({ error: 'Failed to create the link' });
+    }
+});
+
+/**
+ * GET /api/public/job-track/:token — the customer's tracking page
+ *
+ * Replaces looking a job up by its id. Job ids are sequential, so the old route
+ * let anyone count through JOB-2026-0001, 0002, 0003 and read every set in the
+ * shop — brand, size and status — with no login at all. A competitor could
+ * measure the day's intake from a phone.
+ *
+ * The token is 32 random bytes and only its hash is stored, so this cannot be
+ * guessed and a copy of the table is not a set of working links.
+ *
+ * What comes back is deliberately small: what the set is, roughly when it is
+ * expected, and one sentence of plain explanation. No prices, no technician
+ * names, no internal notes, no customer details — somebody holding the link may
+ * not be the person the repair belongs to.
+ */
+router.get('/api/public/job-track/:token', async (req: Request, res: Response) => {
+    try {
+        const raw = req.params.token;
+        if (!isWellFormedTrackToken(raw)) {
+            return res.status(404).json({ error: 'Not found' });
+        }
+        const rows = await db
+            .select()
+            .from(schema.jobTickets)
+            .where(eq(schema.jobTickets.trackTokenHash, hashTrackToken(raw)))
+            .limit(1);
+        const job: any = rows[0];
+        if (!job) return res.status(404).json({ error: 'Not found' });
+
+        const { isExternalTechnicianJob } = await import(
+            '../services/external-technician-intake.service.js'
+        );
+        if (isExternalTechnicianJob(job)) return res.status(404).json({ error: 'Not found' });
+
+        /*
+         * The link dies with the job, after a week's grace.
+         *
+         * Not the instant it closes: somebody collecting their set at six and
+         * opening the link that evening should read "thank you", not an error.
+         * The last thing the shop says to a customer should not be a dead page.
+         */
+        if (trackLinkExpired(job)) return res.status(404).json({ error: 'Not found' });
+
+        res.json({
+            id: job.id,
+            device: job.device,
+            screenSize: job.screenSize,
+            status: job.status,
+            createdAt: job.createdAt,
+            completedAt: job.completedAt,
+            /* The estimate, never a promise. The page words it. */
+            expectedReadyAt: job.deadline ?? null,
+            delayReason: job.delayReason ?? null,
+        });
+    } catch (error) {
+        console.error('[PublicJobTrack]', (error as Error).message);
+        res.status(500).json({ error: 'Failed to load tracking info' });
+    }
+});
+
+/**
+ * GET /api/job-tickets/track/:id — retired.
+ *
+ * Kept as a 410 rather than deleted so an old printed QR or a bookmarked link
+ * gets an answer that says what happened, and so nothing silently falls back to
+ * an enumerable lookup if some caller is still pointed here.
+ */
+router.get('/api/job-tickets/track/:id', async (_req: Request, res: Response) => {
+    return res.status(410).json({
+        error: 'This tracking link has been replaced. Please ask the shop for your new link.',
+        code: 'TRACK_LINK_RETIRED',
+    });
+});
+
+router.get('/api/job-tickets/track-disabled/:id', async (req: Request, res: Response) => {
     try {
         const job = await jobRepo.getJobTicket(req.params.id);
         if (!job) {
@@ -2369,6 +2484,40 @@ router.post('/api/job-tickets/:id/customer-chase', requireAdminAuth, requireAnyG
     try {
         const job = await jobRepo.getJobTicket(req.params.id);
         if (!job) return res.status(404).json({ error: 'Job not found' });
+
+        /*
+         * Half an hour between chases, enforced here.
+         *
+         * The button wakes a technician's phone, so it is a button that can be
+         * used to interrupt somebody repeatedly. Two people at the counter can
+         * press it for the same customer within a minute of each other, and a
+         * busy morning can put the same job in front of the same technician
+         * five times - at which point the alert means nothing and gets swiped
+         * like the rest.
+         *
+         * The window is on the server because a disabled button is not a limit.
+         * The app disables it too, and that is a courtesy to whoever is
+         * looking; this is the rule. Anything else - a second device, a stale
+         * screen, a replayed request - meets it here.
+         *
+         * 429 with the remaining seconds, so the caller can say "asked 12
+         * minutes ago" instead of reporting a failure. Nothing about this is an
+         * error; it is a chase that has already been made.
+         */
+        const CHASE_COOLDOWN_MS = 30 * 60 * 1000;
+        const lastChase = (job as any).customerChaseAt
+            ? new Date((job as any).customerChaseAt).getTime()
+            : 0;
+        const sinceLast = Date.now() - lastChase;
+        if (lastChase && sinceLast < CHASE_COOLDOWN_MS) {
+            const retryAfterSec = Math.ceil((CHASE_COOLDOWN_MS - sinceLast) / 1000);
+            return res.status(429).json({
+                error: 'This customer was already recorded as asking recently.',
+                code: 'CHASE_COOLDOWN',
+                retryAfterSec,
+                lastChaseAt: (job as any).customerChaseAt,
+            });
+        }
 
         const actor = (req as any).user;
         const rawNote = typeof req.body?.note === 'string' ? req.body.note.trim() : '';

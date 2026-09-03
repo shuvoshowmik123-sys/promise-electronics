@@ -156,6 +156,20 @@ export function JobCardMobile({
     const isChased = Boolean((job as any).customerChaseAt);
     const chaseCount = Number((job as any).customerChaseCount) || 0;
 
+    /*
+     * Thirty minutes between chases, shown before it is refused.
+     *
+     * The server holds the rule; this only makes it visible. A greyed button
+     * that says "asked 12m ago" answers the question somebody is about to ask -
+     * has anyone told the technician yet - which is usually why they were
+     * reaching for it in the first place. Letting them press it and then
+     * showing an error would answer the same question and waste a tap on the way.
+     */
+    const minutesSinceChase = (job as any).customerChaseAt
+        ? Math.floor((Date.now() - new Date((job as any).customerChaseAt).getTime()) / 60000)
+        : null;
+    const chaseOnCooldown = minutesSinceChase !== null && minutesSinceChase < 30;
+
     return (
         <motion.div
             variants={mobileCardVariants}
@@ -330,14 +344,23 @@ export function JobCardMobile({
                       */}
                     {onCustomerChase && job.status !== "Delivered" && (
                         <Button
+                            disabled={chaseOnCooldown}
                             onClick={(event) => {
                                 event.stopPropagation();
+                                if (chaseOnCooldown) return;
                                 onCustomerChase(job);
                             }}
-                            className="h-9 w-full rounded-lg gap-1.5 border border-amber-200 bg-amber-50 text-[11px] font-bold text-amber-800 shadow-none hover:bg-amber-100"
+                            className={cn(
+                                "h-9 w-full rounded-lg gap-1.5 border text-[11px] font-bold shadow-none",
+                                chaseOnCooldown
+                                    ? "border-slate-200 bg-slate-50 text-slate-400"
+                                    : "border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100",
+                            )}
                         >
                             <PhoneCall className="w-3.5 h-3.5" />
-                            Customer asking
+                            {chaseOnCooldown
+                                ? `Technician told ${minutesSinceChase === 0 ? "just now" : `${minutesSinceChase}m ago`}`
+                                : "Customer asking"}
                         </Button>
                     )}
                     {isBillable && onBillAtPos && (
