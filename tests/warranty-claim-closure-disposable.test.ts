@@ -382,6 +382,20 @@ describe.skipIf(!LOCAL_PG_AVAILABLE)("a warranty claim closes when its re-servic
     // Ready is gated on durable final-test evidence, not on a checkbox.
     await step("final test pass", agent.post(`/api/job-tickets/${newJobId}/final-test-runs`).send({ outcome: "pass", checkCodes: ["power_on", "picture", "sound"] }));
     await step("Testing -> Ready", agent.post(`/api/job-tickets/${newJobId}/advance-status`).send({ testingConfirmed: true }));
+    /*
+     * Answer the parts gate the way a technician does.
+     *
+     * Completion refuses without a declaration, and this spec is about a
+     * warranty claim closing rather than about parts - so it records the honest
+     * empty answer, which is the one tap the refusal itself suggests. Written
+     * straight to product_lines because the declaration screen's save is a job
+     * update, and this test drives the API rather than the UI.
+     */
+    await dbClient.query(
+      `UPDATE job_tickets SET product_lines = '[]', parts_declared_at = NOW(),
+         parts_declared_by = 'QA Technician' WHERE id = $1`,
+      [newJobId],
+    );
     await step("Ready -> Completed", agent.post(`/api/job-tickets/${newJobId}/advance-status`).send({}));
 
     const { rows: jobRows } = await dbClient.query(

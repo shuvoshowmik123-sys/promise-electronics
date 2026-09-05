@@ -23,6 +23,10 @@ function createAuthMock() {
         requirePermission: () => allowAdminRequest(),
         requireAnyPermission: () => allowAdminRequest(),
         requireGranularPermission: () => allowAdminRequest(),
+        // Added when routes began using the OR-permission guard; a mock that
+        // omits an export the router imports fails at import time, which hides
+        // whatever the test was actually asserting.
+        requireAnyGranularPermission: () => allowAdminRequest(),
         requireSuperAdmin: allowAdminRequest(),
     };
 }
@@ -56,6 +60,19 @@ describe("job warranty stamp on completion", () => {
                     warrantyExpiryDate: null,
                     customerPhone: "01710000000",
                     charges: [],
+                    /*
+                     * Declared, because this test is about the warranty stamp.
+                     *
+                     * Completion refuses without a parts declaration - that gate
+                     * was added deliberately and is the reason this spec has
+                     * been red: it was written before the gate existed and its
+                     * fixture never answered it. Asserting the warranty clock
+                     * requires first getting past a rule that has nothing to do
+                     * with warranties, so the fixture answers it the same way a
+                     * technician would.
+                     */
+                    partsDeclaredAt: new Date(),
+                    partsDeclaredBy: "Test Technician",
                 })),
                 updateJobTicket: vi.fn(async (_id: string, patch: any) => {
                     capturedPatch = patch;
